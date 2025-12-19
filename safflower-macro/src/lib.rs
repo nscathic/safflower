@@ -8,6 +8,10 @@ use safflower_core::{generator::Generator, parser::Parser, reader::CharReader};
 use syn::parse;
 
 #[proc_macro]
+/// Loads a file from the specified path and parses it as a collection of text
+/// entries (see crate documentation for details).
+/// 
+/// Generates an enum for Locales, and a bunch of functions to get the texts.
 pub fn load(input: TokenStream) -> TokenStream {
     let (path, source) = match open_file(input) {
         Ok(r) => r,
@@ -45,6 +49,25 @@ pub fn load(input: TokenStream) -> TokenStream {
             #code
         }
     }.into()
+}
+
+#[proc_macro]
+/// Acts similarly to `format!`, but takes a key from your previously `load!`ed
+/// file instead of a string literal.
+pub fn text(input: TokenStream) -> TokenStream {
+    let key: syn::Ident = match parse(input){
+        Ok(k) => k,
+        Err(e) => return e.into_compile_error().into(),
+    };
+
+    // quote! {{ 
+    //     let locale = safflower_generated::get_locale(); 
+    //     safflower_generated::#key(locale)
+    // }}.into()
+    quote! {{
+        let locale = safflower_generated::get_locale(); 
+        safflower_generated::#key(locale)
+    }}.into()
 }
 
 fn open_file(

@@ -10,7 +10,9 @@ fn no_locales() {
     assert!(generator.generate_getter().is_err());
 
     let expected = quote! {
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {}
+        pub const LOCALES: [Locale; 0usize] = [];
     }.into_token_stream();
     assert_tokens_eq(&expected, &generator.generate_enum());
 }
@@ -22,9 +24,9 @@ fn single_locale() {
     let generator = Generator::new(head, Vec::new());
     let actual = generator.generate_enum();
     let expected = quote! {
-        pub enum Locale {
-            En,
-        }
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+        pub enum Locale { En, }
+        pub const LOCALES: [Locale; 1usize] = [ Locale::En, ];
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -37,11 +39,17 @@ fn mutli_locales() {
     let generator = Generator::new(head, Vec::new());
     let actual = generator.generate_enum();
     let expected = quote! {
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
             En,
             It,
             Fr,
         }
+        pub const LOCALES: [Locale; 3usize] = [
+            Locale::En,
+            Locale::It,
+            Locale::Fr,
+        ];
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -49,16 +57,22 @@ fn mutli_locales() {
 
 #[test]
 fn variant_locales() {
-    let head = get_head(&["en_us", "en_uk", "en_in"]);
+    let head = get_head(&["en-US", "en_uk", "en-in"]);
     
     let generator = Generator::new(head, Vec::new());
     let actual = generator.generate_enum();
     let expected = quote! {
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
             EnUs,
             EnUk,
             EnIn,
         }
+        pub const LOCALES: [Locale; 3usize] = [
+            Locale::EnUs,
+            Locale::EnUk,
+            Locale::EnIn,
+        ];
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -175,9 +189,10 @@ fn single_key_single_locale_complete() {
     let actual = generator.generate().unwrap();
 
     let expected = quote! {
-        pub enum Locale {
-            En,
-        }
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+        pub enum Locale { En, }
+        pub const LOCALES: [Locale; 1usize] = [Locale::En,];
+
         pub fn get_locale() -> Locale {
             let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
                 return Locale::En;
@@ -220,9 +235,10 @@ fn multi_key_single_locale() {
     let actual = generator.generate().unwrap();
 
     let expected = quote! {
-        pub enum Locale {
-            En,
-        }
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+        pub enum Locale { En, }
+        pub const LOCALES: [Locale; 1usize] = [Locale::En,];
+        
         pub fn get_locale() -> Locale {
             let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
                 return Locale::En;
@@ -274,10 +290,13 @@ fn multi_key_multi_locale() {
     let actual = generator.generate().unwrap();
 
     let expected = quote! {
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
             En,
             Gr,
         }
+        pub const LOCALES: [Locale; 2usize] = [Locale::En, Locale::Gr,];
+        
         pub fn get_locale() -> Locale {
             let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
                 return Locale::En;
@@ -326,10 +345,13 @@ fn multi_from_text() {
     let actual = generator.generate().unwrap();
 
     let expected = quote! {
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
             En,
             Gr,
         }
+        pub const LOCALES: [Locale; 2usize] = [Locale::En, Locale::Gr,];
+
         pub fn get_locale() -> Locale {
             let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
                 return Locale::En;

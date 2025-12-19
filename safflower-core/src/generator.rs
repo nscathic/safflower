@@ -66,12 +66,18 @@ impl Generator {
     
     /// Generates an enum of locales.
     fn generate_enum(&self) -> TokenStream {
-        let locales = self.locales.iter().map(|(i, _)| i);
+        let locales = self.locales.iter().map(|(i, _)| i).collect::<Vec<_>>();
+        let count = self.locales.len();
 
         quote! {
+            #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
             pub enum Locale {
                 #(#locales,)*
             }
+
+            pub const LOCALES: [Locale; #count] = [
+                #(Locale::#locales,)*
+            ];
         }.into_token_stream()
     }
 
@@ -153,11 +159,11 @@ fn get_arguments(key: &str) -> Result<Vec<String>, ParseError> {
             '}' if !opened => return Err(ParseError::ExtraClosingBrace),
             '}' => {
                 if argument.is_empty() {
-                    argument = format!("arg{}", unnamed_indexer);
+                    argument = format!("arg{unnamed_indexer}");
                     unnamed_indexer += 1;
                 }
-                else if argument.starts_with(|c| c >= '0' && c <= '9') {
-                    argument = format!("arg{}", argument);
+                else if argument.starts_with(|c: char| c.is_ascii_digit()) {
+                    argument = format!("arg{argument}");
                 }
 
                 if !arguments.contains(&argument) {                        

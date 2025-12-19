@@ -1,6 +1,11 @@
 #[test]
-pub fn load() {
-    safflower_macro::load!("test-data/mini-2loc.txt");
+pub fn absolute_minimal() {
+    safflower_macro::load!("test-data/abs_min.txt");
+    assert_eq!(safflower_macro::text!(a), "c");
+}
 
-    println!("\n\n{}\n\n", safflower_generated::greet(safflower_generated::get_locale()));
+#[test]
+pub fn minimal() {
+    safflower_macro::load!("test-data/greet_en_se.txt");
+    assert_eq!(safflower_macro::text!(greet), "Hi!");
 }

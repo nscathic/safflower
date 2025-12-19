@@ -64,8 +64,6 @@ impl<'a> CharReader<'a> {
     }
     
     fn read_param(&mut self, first: char) -> Token {
-        assert!(is_valid_char(first), "unexpected char '{first}'");
-
         let mut value = String::from(first);
 
         // First we get the token
@@ -126,7 +124,8 @@ impl Iterator for CharReader<'_> {
                 Some('#') => return Some(self.read_comment()),
                 Some('!') => return Some(self.read_config()),
                 Some('"') => return Some(self.read_value()),
-                Some(c) =>   return Some(self.read_param(c)),
+                Some(c) if is_valid_char(c) => return Some(self.read_param(c)),
+                Some(c) => panic!("unexpected char '{c}'"),
             }
         }
     }

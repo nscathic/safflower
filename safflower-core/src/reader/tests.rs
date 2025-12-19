@@ -131,13 +131,17 @@ fn value() {
 #[test]
 fn one_line() {
     for source in [
-        "key: \"value\"",
-        "key: \"value\"\n",
-        "key   :  \"value\"   ",
+        "key: loc \"value\"",
+        "key:loc\"value\"",
+        "key:\n loc \"value\"",
+        "key: loc\n \"value\"",
+        "key: loc \"value\"\n",
+        "key   :  loc \"value\"   ",
     ] {
         let tokens = read_all(source);
         assert_eq!(tokens, vec![
             Token::Key(String::from("key")),
+            Token::Locale(String::from("loc")),
             Token::Value(String::from("value")),
         ], "src: '{source}'");
     }
