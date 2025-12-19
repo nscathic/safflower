@@ -1,0 +1,4 @@
+!locales en se
+greet:
+    en "Hi!"
+    se "Hej!"

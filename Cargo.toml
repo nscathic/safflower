@@ -1,0 +1,19 @@
+[package]
+name = "safflower"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+safflower-core  = { version="0.1.0", path="safflower-core" }
+safflower-macro = { version="0.1.0", path="safflower-macro" }
+
+[workspace]
+members = ["safflower-core", "safflower-macro"]
+
+[lints.clippy]
+nursery  = { priority = -1, level = "deny" }
+pedantic = { priority = -1, level = "deny" }
+
+[dev-dependencies]
+quote = "1.0.42"
+

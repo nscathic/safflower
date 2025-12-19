@@ -1,0 +1,17 @@
+[package]
+name = "safflower-macro"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+proc-macro2 = "1.0.103"
+quote = "1.0.42"
+safflower-core = { version="0.1.0", path = "../safflower-core" }
+syn = "2.0.111"
+
+[lib]
+proc-macro = true
+
+[lints.clippy]
+nursery  = { priority = -1, level = "deny" }
+pedantic = { priority = -1, level = "deny" }
