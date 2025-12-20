@@ -43,6 +43,15 @@ impl Generator {
         }
     }
 
+    /// Sets the locale to the deafult one.
+    /// # Safety
+    /// See [`std::env::set_var`].
+    pub unsafe fn set_default_locale(&self) {
+        unsafe {
+            std::env::set_var(ENV_LOCALE_NAME, &self.locales[0].1);
+        }
+    }
+
     /// Generates code.
     /// 
     /// # Errors
@@ -50,6 +59,7 @@ impl Generator {
     pub fn generate(mut self) -> Result<TokenStream, ParseError> {
         let locales = self.generate_enum();
         let getter = self.generate_getter()?;
+        let setter = self.generate_setter()?;
         let keys = std::mem::take(&mut self.keys)
         .into_iter()
         .map(|key| self.generate_from_key(key))
@@ -58,6 +68,7 @@ impl Generator {
         let code = quote! {
             #locales
             #getter
+            #setter
             #(#keys)*
         }.into_token_stream();
 
@@ -81,7 +92,7 @@ impl Generator {
         }.into_token_stream()
     }
 
-    /// Generates an enum of locales and a function to get the current one.
+    /// Generates a function to get the current locale.
     fn generate_getter(&self) -> Result<TokenStream, ParseError> {
         if self.locales.is_empty() {return Err(ParseError::NoLocales); }
 
@@ -111,12 +122,44 @@ impl Generator {
         Ok(code)
     }
 
-    fn generate_from_key(&self, key: Key) -> Result<TokenStream, ParseError> {
-        let args = get_arguments(&key.id)?
-        .into_iter()
-        .map(|a| syn::Ident::new(&a, Span::call_site()));
+    /// Generates a function to set the current locale.
+    fn generate_setter(&self) -> Result<TokenStream, ParseError> {
+        if self.locales.is_empty() {return Err(ParseError::NoLocales); }
 
+        let match_entries = self.locales
+            .iter()
+            .map(|(l, i)| quote! { Locale::#l => #i });
+
+        let code = quote! {
+            pub unsafe fn set_locale(locale: Locale) {
+                let value = match locale {
+                    #(#match_entries,)*
+                };
+                std::env::set_var(#ENV_LOCALE_NAME, value);
+            }
+        }.into_token_stream();
+
+        Ok(code)
+    }
+
+    fn generate_from_key(&self, key: Key) -> Result<TokenStream, ParseError> {
         let Key { id, comment, entries } = key;
+
+        let args = get_arguments(&entries[0])?;
+        
+        for (i, e) in entries.iter().enumerate().skip(1) {
+            let a = get_arguments(e)?;
+            assert!(
+                a == args,
+                "in key \"{id}\", entry {} has arguments {a:?}, but entry \
+                {} has arguments {args:?}",
+                self.locales[0].1,
+                self.locales[i].1,
+            );
+        }
+        let args = args.into_iter()
+        .map(|a| syn::Ident::new(&a, Span::call_site()))
+        .collect::<Vec<_>>();
 
         let id = syn::Ident::new(&id, Span::call_site());
         
@@ -128,13 +171,16 @@ impl Generator {
         .map(|(i, entry)| {
             let locale = &self.locales[i].0;
             quote! {
-                Locale::#locale => format!(#entry)
+                Locale::#locale => format!(#entry, #(#args,)*)
             }
         });
 
         let code = quote! {
             #comment
-            pub fn #id(locale: Locale #(,#args)*) -> String {
+            pub fn #id(
+                locale: Locale,
+                #(#args:impl std::fmt::Display,)*
+            ) -> String {
                 match locale {
                     #(#entries,)*
                 }
@@ -150,6 +196,7 @@ fn get_arguments(key: &str) -> Result<Vec<String>, ParseError> {
     let mut argument = String::new();
     let mut opened = false;
     let mut unnamed_indexer = 0;
+    let mut formatting = false;
 
     for c in key.chars() {
         match c {
@@ -172,9 +219,13 @@ fn get_arguments(key: &str) -> Result<Vec<String>, ParseError> {
 
                 argument = String::new();
                 opened = false;
+                formatting = false;
             }
 
-            c if opened => argument.push(
+            ':' if opened => formatting = true,
+
+            // Don't copy the formatting part
+            c if opened && !formatting => argument.push(
                 validate_char(c)
                 .map_err(|c| ParseError::ArgBadChar(
                     shorten(key), 

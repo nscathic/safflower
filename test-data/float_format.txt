@@ -1,0 +1,5 @@
+!locales d1 d2 d3
+digits:
+    d1 "value: {0:.1}"
+    d2 "value: {0:.2}"
+    d3 "value: {0:.3}"

@@ -1,0 +1,4 @@
+!locales en it
+greet:
+    en "Hi {0}!"
+    it "Ciao {0}!"

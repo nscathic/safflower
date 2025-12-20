@@ -3,7 +3,7 @@ use crate::{parser::Parser, reader::CharReader};
 use super::*;
 
 #[test]
-fn no_locales() {
+fn enum_no_locales() {
     let head = Head::default();
     let generator = Generator::new(head, Vec::new());
 
@@ -18,7 +18,7 @@ fn no_locales() {
 }
 
 #[test]
-fn single_locale() {
+fn enum_single_locale() {
     let head = get_head(&["en"]);
 
     let generator = Generator::new(head, Vec::new());
@@ -33,7 +33,7 @@ fn single_locale() {
 }
 
 #[test]
-fn mutli_locales() {
+fn enum_mutli_locales() {
     let head = get_head(&["en", "it", "fr"]);
 
     let generator = Generator::new(head, Vec::new());
@@ -56,7 +56,7 @@ fn mutli_locales() {
 }
 
 #[test]
-fn variant_locales() {
+fn enum_variant_locales() {
     let head = get_head(&["en-US", "en_uk", "en-in"]);
     
     let generator = Generator::new(head, Vec::new());
@@ -79,7 +79,7 @@ fn variant_locales() {
 }
 
 #[test]
-fn single_locale_getter() {
+fn getter_single_locale() {
     let head = get_head(&["omega"]);
     let generator = Generator::new(head, vec![]);
     let actual = generator.generate_getter().unwrap();
@@ -100,7 +100,7 @@ fn single_locale_getter() {
 }
 
 #[test]
-fn mutli_locale_getter() {
+fn getter_mutli_locale() {
     let head = get_head(&["en-uk", "se", "it"]);
     let generator = Generator::new(head, vec![]);
     let actual = generator.generate_getter().unwrap();
@@ -123,6 +123,44 @@ fn mutli_locale_getter() {
 }
 
 #[test]
+fn setter_single_locale() {
+    let head = get_head(&["omega"]);
+    let generator = Generator::new(head, vec![]);
+    let actual = generator.generate_setter().unwrap();
+    
+    let expected = quote! {
+        pub unsafe fn set_locale(locale: Locale) {
+            let value = match locale {
+                Locale::Omega => "OMEGA",
+            };
+            std::env::set_var(#ENV_LOCALE_NAME, value);
+        }
+    }.into_token_stream();
+
+    assert_tokens_eq(&expected, &actual);
+}
+
+#[test]
+fn setter_mutli_locale() {
+    let head = get_head(&["en-uk", "se", "it"]);
+    let generator = Generator::new(head, vec![]);
+    let actual = generator.generate_setter().unwrap();
+    
+    let expected = quote! {
+        pub unsafe fn set_locale(locale: Locale) {
+            let value = match locale {
+                Locale::EnUk => "EN_UK",
+                Locale::Se => "SE",
+                Locale::It => "IT",
+            };
+            std::env::set_var(#ENV_LOCALE_NAME, value);
+        }
+    }.into_token_stream();
+
+    assert_tokens_eq(&expected, &actual);
+}
+
+#[test]
 fn single_key_single_locale() {
     let head = get_head(&["en"]);
     let key = Key { 
@@ -137,9 +175,67 @@ fn single_key_single_locale() {
 
     let expected = quote! {
         #[doc = "Common greeting."]
-        pub fn greet(locale: Locale) -> String {
+        pub fn greet(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("hi"),
+                Locale::En => format!("hi",),
+            }
+        }
+    };
+
+    assert_tokens_eq(&expected, &actual);
+}
+
+#[test]
+fn single_key_single_locale_single_arg() {
+    let head = get_head(&["en"]);
+    let key = Key { 
+        id: String::from("greet"), 
+        comment: Some(String::from("Common greeting.")),
+        entries: vec![
+            String::from("hi {name}"),
+        ]
+    };
+    let generator = Generator::new(head, vec![key.clone()]);
+    let actual = generator.generate_from_key(key).unwrap();
+
+    let expected = quote! {
+        #[doc = "Common greeting."]
+        pub fn greet(
+            locale: Locale, 
+            name: impl std::fmt::Display,
+        ) -> String {
+            match locale {
+                Locale::En => format!("hi {name}", name,),
+            }
+        }
+    };
+
+    assert_tokens_eq(&expected, &actual);
+}
+
+#[test]
+fn single_key_single_locale_multi_arg() {
+    let head = get_head(&["en"]);
+    let key = Key { 
+        id: String::from("greet"), 
+        comment: Some(String::from("Common greeting.")),
+        entries: vec![
+            String::from("hi {0}, {1}, and {2}"),
+        ]
+    };
+    let generator = Generator::new(head, vec![key.clone()]);
+    let actual = generator.generate_from_key(key).unwrap();
+
+    let expected = quote! {
+        #[doc = "Common greeting."]
+        pub fn greet(
+            locale: Locale, 
+            arg0: impl std::fmt::Display,
+            arg1: impl std::fmt::Display,
+            arg2: impl std::fmt::Display,
+        ) -> String {
+            match locale {
+                Locale::En => format!("hi {0}, {1}, and {2}", arg0, arg1, arg2,),
             }
         }
     };
@@ -163,11 +259,11 @@ fn single_key_mutli_locale() {
     let actual = generator.generate_from_key(key).unwrap();
 
     let expected = quote! {
-        pub fn surprise(locale: Locale) -> String {
+        pub fn surprise(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("oh my god"),
-                Locale::Se => format!("jösses"),
-                Locale::It => format!("oddio"),
+                Locale::En => format!("oh my god",),
+                Locale::Se => format!("jösses",),
+                Locale::It => format!("oddio",),
             }
         }
     };
@@ -176,7 +272,60 @@ fn single_key_mutli_locale() {
 }
 
 #[test]
-fn single_key_single_locale_complete() {
+fn parse_no_arguments() {
+    for line in [
+        "Hello",
+        "",
+    ] {
+        let result = get_arguments(line).unwrap();
+        assert!(result.is_empty());
+    }
+}
+
+#[test]
+fn parse_invalid_arguments() {
+    for line in [
+        "Hi {$arg}",
+        "I want a {{}",
+        "Do you want a {}}?",
+        "No, but a {?}",
+    ] {
+        let result = get_arguments(line);
+        assert!(
+            result.is_err(), 
+            "{line} should fault, is instead {:?}", 
+            result.unwrap(),
+        );
+    }
+}
+
+#[test]
+fn parse_single_arguments() {
+    for (line, arg) in [
+        ("Hello {name}", "name"),
+        ("{0} is really cool", "arg0"),
+        ("{arg-b}", "arg_b"),
+        ("{}", "arg0"),
+    ] {
+        let result = get_arguments(line).unwrap();
+        assert_eq!(result, vec![arg]);
+    }
+}
+
+#[test]
+fn parse_mutliple_arguments() {
+    for (line, arg) in [
+        ("Hello {name}, I'm {name2}", vec!["name", "name2"]),
+        ("{0}{1}{3}", vec!["arg0", "arg1", "arg3"]),
+        ("{}{}{}", vec!["arg0", "arg1", "arg2"]),
+    ] {
+        let result = get_arguments(line).unwrap();
+        assert_eq!(result, arg);
+    }
+}
+
+#[test]
+fn single_key_single_locale_generate_all() {
     let head = get_head(&["en"]);
     let key = Key { 
         id: String::from("greet"), 
@@ -202,9 +351,17 @@ fn single_key_single_locale_complete() {
                 _ => Locale::En,
             }
         }
-        pub fn greet(locale: Locale) -> String {
+
+        pub unsafe fn set_locale(locale: Locale) {
+            let value = match locale {
+                Locale::En => "EN",
+            };
+            std::env::set_var(#ENV_LOCALE_NAME, value);
+        }
+
+        pub fn greet(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("hi"),
+                Locale::En => format!("hi",),
             }
         }
     };
@@ -213,7 +370,7 @@ fn single_key_single_locale_complete() {
 }
 
 #[test]
-fn multi_key_single_locale() {
+fn multi_key_single_locale_generate_all() {
     let head = get_head(&["en"]);
     let keys = vec![
         Key { 
@@ -249,15 +406,22 @@ fn multi_key_single_locale() {
             }
         }
 
-        pub fn greet(locale: Locale) -> String {
+        pub unsafe fn set_locale(locale: Locale) {
+            let value = match locale {
+                Locale::En => "EN",
+            };
+            std::env::set_var(#ENV_LOCALE_NAME, value);
+        }
+
+        pub fn greet(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("hi"),
+                Locale::En => format!("hi",),
             }
         }
 
-        pub fn other_greet(locale: Locale) -> String {
+        pub fn other_greet(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("hello"),
+                Locale::En => format!("hello",),
             }
         }
     };
@@ -266,7 +430,7 @@ fn multi_key_single_locale() {
 }
 
 #[test]
-fn multi_key_multi_locale() {
+fn multi_key_multi_locale_generate_all() {
     let head = get_head(&["en", "gr"]);
     let keys = vec![
         Key { 
@@ -308,17 +472,25 @@ fn multi_key_multi_locale() {
             }
         }
 
-        pub fn greet(locale: Locale) -> String {
+        pub unsafe fn set_locale(locale: Locale) {
+            let value = match locale {
+                Locale::En => "EN",
+                Locale::Gr => "GR",
+            };
+            std::env::set_var(#ENV_LOCALE_NAME, value);
+        }
+
+        pub fn greet(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("hi"),
-                Locale::Gr => format!("γεια"),
+                Locale::En => format!("hi",),
+                Locale::Gr => format!("γεια",),
             }
         }
 
-        pub fn other_greet(locale: Locale) -> String {
+        pub fn other_greet(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("hello"),
-                Locale::Gr => format!("καλημέρα"),
+                Locale::En => format!("hello",),
+                Locale::Gr => format!("καλημέρα",),
             }
         }
     };
@@ -363,75 +535,30 @@ fn multi_from_text() {
             }
         }
 
-        pub fn greet(locale: Locale) -> String {
+        pub unsafe fn set_locale(locale: Locale) {
+            let value = match locale {
+                Locale::En => "EN",
+                Locale::Gr => "GR",
+            };
+            std::env::set_var(#ENV_LOCALE_NAME, value);
+        }
+
+        pub fn greet(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("hi"),
-                Locale::Gr => format!("γεια"),
+                Locale::En => format!("hi",),
+                Locale::Gr => format!("γεια",),
             }
         }
 
-        pub fn other_greet(locale: Locale) -> String {
+        pub fn other_greet(locale: Locale,) -> String {
             match locale {
-                Locale::En => format!("hello"),
-                Locale::Gr => format!("καλημέρα"),
+                Locale::En => format!("hello",),
+                Locale::Gr => format!("καλημέρα",),
             }
         }
     };
 
     assert_tokens_eq(&expected, &actual);
-}
-
-#[test]
-fn no_arguments() {
-    for line in [
-        "Hello",
-        "",
-    ] {
-        let result = get_arguments(line).unwrap();
-        assert!(result.is_empty());
-    }
-}
-
-#[test]
-fn invalid_arguments() {
-    for line in [
-        "Hi {$arg}",
-        "I want a {{}",
-        "Do you want a {}}?",
-        "No, but a {?}",
-    ] {
-        let result = get_arguments(line);
-        assert!(
-            result.is_err(), 
-            "{line} should fault, is instead {:?}", 
-            result.unwrap(),
-        );
-    }
-}
-
-#[test]
-fn single_arguments() {
-    for (line, arg) in [
-        ("Hello {name}", "name"),
-        ("{0} is really cool", "arg0"),
-        ("{arg-b}", "arg_b"),
-        ("{}", "arg0"),
-    ] {
-        let result = get_arguments(line).unwrap();
-        assert_eq!(result, vec![arg]);
-    }
-}
-
-#[test]
-fn mutliple_arguments() {
-    for (line, arg) in [
-        ("Hello {name}, I'm {name2}", vec!["name", "name2"]),
-        ("{0}{1}{3}", vec!["arg0", "arg1", "arg3"]),
-        ("{}{}{}", vec!["arg0", "arg1", "arg2"]),
-    ] {
-        let result = get_arguments(line).unwrap();
-        assert_eq!(result, arg);
-    }
 }
 
 fn get_head(locales: &[&str]) -> Head {

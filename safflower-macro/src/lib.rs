@@ -5,7 +5,11 @@ use std::{fs::File, io::Read};
 use proc_macro::TokenStream;
 use quote::quote;
 use safflower_core::{generator::Generator, parser::Parser, reader::CharReader};
-use syn::parse;
+use syn::{parse, parse_macro_input};
+
+use crate::text::Texter;
+
+mod text;
 
 #[proc_macro]
 /// Loads a file from the specified path and parses it as a collection of text
@@ -32,43 +36,31 @@ pub fn load(input: TokenStream) -> TokenStream {
 
     let (head, keys) = parser.extract();
     let generator = Generator::new(head, keys);
+    unsafe {
+        generator.set_default_locale();
+    }
+
     let code = match generator.generate() {
         Ok(c) => c,
         Err(e) => return syn::Error::new(
             path.span(), 
-            format!("error in generating code for {}: {}", path.value(), e), 
+            format!("error in generating code for {}: {e}", path.value()), 
         )
         .into_compile_error()
         .into()
     };
 
-    // panic!("{code}");
-
-    quote! {
-        mod safflower_generated {
-            #code
-        }
-    }.into()
+    quote! { mod localisation { #code } }.into()
 }
 
 #[proc_macro]
 /// Acts similarly to `format!`, but takes a key from your previously `load!`ed
 /// file instead of a string literal.
 pub fn text(input: TokenStream) -> TokenStream {
-    let key: syn::Ident = match parse(input){
-        Ok(k) => k,
-        Err(e) => return e.into_compile_error().into(),
-    };
-
-    // quote! {{ 
-    //     let locale = safflower_generated::get_locale(); 
-    //     safflower_generated::#key(locale)
-    // }}.into()
-    quote! {{
-        let locale = safflower_generated::get_locale(); 
-        safflower_generated::#key(locale)
-    }}.into()
+    let code = parse_macro_input!(input as Texter);
+    quote! { #code }.into()
 }
+
 
 fn open_file(
     input: TokenStream,

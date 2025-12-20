@@ -1,4 +1,4 @@
 #[cfg(test)]
-mod integration_tests;
+mod tests;
 
-pub use safflower_macro::load;
+pub use safflower_macro::{load, text};

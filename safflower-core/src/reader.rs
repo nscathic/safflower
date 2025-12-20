@@ -74,7 +74,14 @@ impl<'a> CharReader<'a> {
                 // Any valid char is added to the buffer, unchecked.
                 Some(c) if is_valid_char(c) => value += &c.to_string(),
 
+                // The next thing is a delimiter, so we have a key
                 Some(':') => return Token::Key(value),
+
+                // The next thing is a quote, so we have a locale
+                Some('\"') => {
+                    self.buffer = Some('\"');
+                    return Token::Locale(value)
+                },
 
                 // Other chars are suspicious
                 Some(c) => panic!("unexpected char '{c}'"),
