@@ -1,5 +1,6 @@
 use safflower::{load, text};
 
+#[allow(clippy::useless_format)]
 fn main() {
     load!("src/bin/lorem256_1024.txt");
     

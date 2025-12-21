@@ -1,7 +1,5 @@
 #![doc = include_str!("../readme.md")]
 
-pub const ENV_LOCALE_NAME: &str = "safflower_LOCALE";
-
 pub mod error;
 pub mod reader;
 pub mod parser;

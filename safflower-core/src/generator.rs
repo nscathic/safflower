@@ -1,10 +1,12 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 
-use crate::{ENV_LOCALE_NAME, error::ParseError, parser::{Key, Head}, shorten, validate_char};
+use crate::{error::ParseError, parser::{Key, Head}, shorten, validate_char};
 
 #[cfg(test)]
 mod tests;
+
+pub static A: std::sync::Mutex<i32> = std::sync::Mutex::new(0);
 
 pub struct Generator {
     locales: Vec<(syn::Ident, String)>,
@@ -43,23 +45,17 @@ impl Generator {
         }
     }
 
-    /// Sets the locale to the deafult one.
-    /// # Safety
-    /// See [`std::env::set_var`].
-    pub unsafe fn set_default_locale(&self) {
-        unsafe {
-            std::env::set_var(ENV_LOCALE_NAME, &self.locales[0].1);
-        }
-    }
-
     /// Generates code.
     /// 
     /// # Errors
     /// If there are no defined locales.
     pub fn generate(mut self) -> Result<TokenStream, ParseError> {
+        if self.locales.is_empty() {return Err(ParseError::NoLocales); }
+
         let locales = self.generate_enum();
-        let getter = self.generate_getter()?;
-        let setter = self.generate_setter()?;
+        let getter = Self::generate_getter();
+        let setter = Self::generate_setter();
+        
         let keys = std::mem::take(&mut self.keys)
         .into_iter()
         .map(|key| self.generate_from_key(key))
@@ -75,71 +71,59 @@ impl Generator {
         Ok(code)
     }
     
-    /// Generates an enum of locales.
+    /// Generates an enum of locales, and a static var to keep it.
     fn generate_enum(&self) -> TokenStream {
         let locales = self.locales.iter().map(|(i, _)| i).collect::<Vec<_>>();
+        let default = locales[0];
         let count = self.locales.len();
 
         quote! {
+            /// The locales available.
             #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
             pub enum Locale {
                 #(#locales,)*
             }
 
+            /// All locales, in the order they were declared.
             pub const LOCALES: [Locale; #count] = [
                 #(Locale::#locales,)*
             ];
+
+            /// The current locale.
+            pub static LOCALE: std::sync::Mutex<Locale> = 
+                std::sync::Mutex::new(Locale::#default);
         }.into_token_stream()
     }
 
     /// Generates a function to get the current locale.
-    fn generate_getter(&self) -> Result<TokenStream, ParseError> {
-        if self.locales.is_empty() {return Err(ParseError::NoLocales); }
-
-        let default_locale = &self.locales[0].0;
-        let match_entries = self.locales
-            .iter()
-            .skip(1)
-            .map(|(l, i)| {
-                quote! {
-                    #i => Locale::#l
-                }
-            });
-
-        let code = quote! {
+    fn generate_getter() -> TokenStream {
+        quote! {
+            /// Gets the current locale. As this calls `Mutex::lock()`, it will
+            /// block the thread until it is safe to access. 
+            /// 
+            /// # Panic 
+            /// It will panic if the `Mutex` has been poisoned. See 
+            /// [`std::sync::Mutex`].
             pub fn get_locale() -> Locale {
-                let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
-                    return Locale::#default_locale;
-                };
-
-                match var.as_str() {
-                    #(#match_entries,)*
-                    _ => Locale::#default_locale,
-                }
+                *LOCALE
+                .lock()
+                .expect("could not acquire current locale")
             }
-        }.into_token_stream();
-
-        Ok(code)
+        }
     }
 
     /// Generates a function to set the current locale.
-    fn generate_setter(&self) -> Result<TokenStream, ParseError> {
-        if self.locales.is_empty() {return Err(ParseError::NoLocales); }
-
-        let match_entries = self.locales
-            .iter()
-            .map(|(l, i)| quote! { Locale::#l => #i });
-
-        let code = quote! {
+    fn generate_setter() -> TokenStream {
+        quote! {
             pub unsafe fn set_locale(locale: Locale) {
-                let value = match locale {
-                    #(#match_entries,)*
-                };
-                std::env::set_var(#ENV_LOCALE_NAME, value);
+                unsafe {
+                    *LOCALE
+                    .lock()
+                    .expect("could not acquire current locale")
+                        = locale;
+                }
             }
-        }.into_token_stream();
-
-        Ok(code)
+        }.into_token_stream()
     }
 
     fn generate_from_key(&self, key: Key) -> Result<TokenStream, ParseError> {

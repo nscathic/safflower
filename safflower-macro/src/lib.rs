@@ -36,9 +36,6 @@ pub fn load(input: TokenStream) -> TokenStream {
 
     let (head, keys) = parser.extract();
     let generator = Generator::new(head, keys);
-    unsafe {
-        generator.set_default_locale();
-    }
 
     let code = match generator.generate() {
         Ok(c) => c,

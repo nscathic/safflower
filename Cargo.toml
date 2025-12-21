@@ -5,9 +5,10 @@ edition = "2024"
 authors = ["nscathic"]
 license-file = "license.md"
 description = "A localising tool with macros to statically allocate formattable text."
-# homepage = "https://github.com/nscathic/safflower"
 repository = "https://github.com/nscathic/safflower"
 readme = "readme.md"
+keywords = ["localisation", "localization", "language", "formatting"]
+categories = ["internationalization", "localization"]
 
 [dependencies]
 safflower-core  = { version="0.1.0", path="safflower-core" }

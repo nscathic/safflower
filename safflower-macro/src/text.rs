@@ -28,7 +28,9 @@ impl quote::ToTokens for Texter {
 
         let new = quote::quote! {
             localisation::#key(
-                localisation::get_locale() 
+                *localisation::LOCALE
+                    .lock()
+                    .expect("could not acquire current locale")
                 #(,#args)*
             )
         };
