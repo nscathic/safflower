@@ -13,7 +13,7 @@ categories = ["internationalization", "localization"]
 [dependencies]
 proc-macro2 = "1.0.103"
 quote = "1.0.42"
-safflower-core = { version="0.2.0", path = "../safflower-core" }
+safflower-core = "0.2.0"
 syn = "2.0.111"
 
 [lib]
