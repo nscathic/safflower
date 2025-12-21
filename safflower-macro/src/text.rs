@@ -1,3 +1,5 @@
+use safflower_core::LOCALE_FAILURE_MESSAGE;
+
 pub struct Texter {
     key: syn::Ident,
     args: Vec<syn::Expr>
@@ -30,7 +32,7 @@ impl quote::ToTokens for Texter {
             localisation::#key(
                 *localisation::LOCALE
                     .lock()
-                    .expect("could not acquire current locale")
+                    .expect(#LOCALE_FAILURE_MESSAGE)
                 #(,#args)*
             )
         };

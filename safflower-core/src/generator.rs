@@ -1,12 +1,10 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 
-use crate::{error::ParseError, parser::{Key, Head}, shorten, validate_char};
+use crate::{LOCALE_FAILURE_MESSAGE, error::ParseError, parser::{Key, Head}, shorten, validate_char};
 
 #[cfg(test)]
 mod tests;
-
-pub static A: std::sync::Mutex<i32> = std::sync::Mutex::new(0);
 
 pub struct Generator {
     locales: Vec<(syn::Ident, String)>,
@@ -50,9 +48,7 @@ impl Generator {
     /// # Errors
     /// If there are no defined locales.
     pub fn generate(mut self) -> Result<TokenStream, ParseError> {
-        if self.locales.is_empty() {return Err(ParseError::NoLocales); }
-
-        let locales = self.generate_enum();
+        let locales = self.generate_enum()?;
         let getter = Self::generate_getter();
         let setter = Self::generate_setter();
         
@@ -72,42 +68,62 @@ impl Generator {
     }
     
     /// Generates an enum of locales, and a static var to keep it.
-    fn generate_enum(&self) -> TokenStream {
+    fn generate_enum(&self) -> Result<TokenStream, ParseError> {
+        if self.locales.is_empty() {return Err(ParseError::NoLocales); }
+
         let locales = self.locales.iter().map(|(i, _)| i).collect::<Vec<_>>();
         let default = locales[0];
         let count = self.locales.len();
 
-        quote! {
-            /// The locales available.
+        // quote! {
+        //     /// The locales available.
+        //     #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+        //     pub enum Locale {
+        //         #(#locales,)*
+        //     }
+
+        //     /// All locales, in the order they were declared.
+        //     pub const LOCALES: [Locale; #count] = [
+        //         #(Locale::#locales,)*
+        //     ];
+
+        //     /// The current locale.
+        //     pub static LOCALE: std::sync::Mutex<Locale> = 
+        //         std::sync::Mutex::new(Locale::#default);
+        // }.into_token_stream()
+
+        let code = quote! {
             #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
             pub enum Locale {
                 #(#locales,)*
             }
 
-            /// All locales, in the order they were declared.
             pub const LOCALES: [Locale; #count] = [
                 #(Locale::#locales,)*
             ];
 
-            /// The current locale.
             pub static LOCALE: std::sync::Mutex<Locale> = 
                 std::sync::Mutex::new(Locale::#default);
-        }.into_token_stream()
+        }.into_token_stream();
+
+        Ok(code)
     }
 
     /// Generates a function to get the current locale.
     fn generate_getter() -> TokenStream {
-        quote! {
+        /*
             /// Gets the current locale. As this calls `Mutex::lock()`, it will
             /// block the thread until it is safe to access. 
             /// 
             /// # Panic 
             /// It will panic if the `Mutex` has been poisoned. See 
             /// [`std::sync::Mutex`].
+        */          
+        quote! {
             pub fn get_locale() -> Locale {
                 *LOCALE
                 .lock()
-                .expect("could not acquire current locale")
+                .expect(#LOCALE_FAILURE_MESSAGE)
             }
         }
     }
@@ -115,13 +131,11 @@ impl Generator {
     /// Generates a function to set the current locale.
     fn generate_setter() -> TokenStream {
         quote! {
-            pub unsafe fn set_locale(locale: Locale) {
-                unsafe {
-                    *LOCALE
-                    .lock()
-                    .expect("could not acquire current locale")
-                        = locale;
-                }
+            pub fn set_locale(locale: Locale) {
+                *LOCALE
+                .lock()
+                .expect(#LOCALE_FAILURE_MESSAGE)
+                    = locale;
             }
         }.into_token_stream()
     }

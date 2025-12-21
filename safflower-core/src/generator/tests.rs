@@ -1,4 +1,4 @@
-use crate::{parser::Parser, reader::CharReader};
+use crate::{LOCALE_FAILURE_MESSAGE, parser::Parser, reader::CharReader};
 
 use super::*;
 
@@ -6,15 +6,7 @@ use super::*;
 fn enum_no_locales() {
     let head = Head::default();
     let generator = Generator::new(head, Vec::new());
-
-    assert!(generator.generate_getter().is_err());
-
-    let expected = quote! {
-        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-        pub enum Locale {}
-        pub const LOCALES: [Locale; 0usize] = [];
-    }.into_token_stream();
-    assert_tokens_eq(&expected, &generator.generate_enum());
+    assert!(generator.generate_enum().is_err());
 }
 
 #[test]
@@ -22,11 +14,13 @@ fn enum_single_locale() {
     let head = get_head(&["en"]);
 
     let generator = Generator::new(head, Vec::new());
-    let actual = generator.generate_enum();
+    let actual = generator.generate_enum().unwrap();
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale { En, }
         pub const LOCALES: [Locale; 1usize] = [ Locale::En, ];
+        pub static LOCALE: std::sync::Mutex<Locale> = 
+                std::sync::Mutex::new(Locale::En);
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -37,7 +31,7 @@ fn enum_mutli_locales() {
     let head = get_head(&["en", "it", "fr"]);
 
     let generator = Generator::new(head, Vec::new());
-    let actual = generator.generate_enum();
+    let actual = generator.generate_enum().unwrap();
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
@@ -50,6 +44,8 @@ fn enum_mutli_locales() {
             Locale::It,
             Locale::Fr,
         ];
+        pub static LOCALE: std::sync::Mutex<Locale> = 
+                std::sync::Mutex::new(Locale::En);
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -60,7 +56,7 @@ fn enum_variant_locales() {
     let head = get_head(&["en-US", "en_uk", "en-in"]);
     
     let generator = Generator::new(head, Vec::new());
-    let actual = generator.generate_enum();
+    let actual = generator.generate_enum().unwrap();
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
@@ -73,88 +69,8 @@ fn enum_variant_locales() {
             Locale::EnUk,
             Locale::EnIn,
         ];
-    }.into_token_stream();
-
-    assert_tokens_eq(&expected, &actual);
-}
-
-#[test]
-fn getter_single_locale() {
-    let head = get_head(&["omega"]);
-    let generator = Generator::new(head, vec![]);
-    let actual = generator.generate_getter().unwrap();
-    
-    let expected = quote! {
-        pub fn get_locale() -> Locale {
-            let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
-                return Locale::Omega;
-            };
-
-            match var.as_str() {
-                _ => Locale::Omega,
-            }
-        }
-    }.into_token_stream();
-
-    assert_tokens_eq(&expected, &actual);
-}
-
-#[test]
-fn getter_mutli_locale() {
-    let head = get_head(&["en-uk", "se", "it"]);
-    let generator = Generator::new(head, vec![]);
-    let actual = generator.generate_getter().unwrap();
-    
-    let expected = quote! {
-        pub fn get_locale() -> Locale {
-            let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
-                return Locale::EnUk;
-            };
-
-            match var.as_str() {
-                "SE" => Locale::Se,
-                "IT" => Locale::It,
-                _ => Locale::EnUk,
-            }
-        }
-    }.into_token_stream();
-
-    assert_tokens_eq(&expected, &actual);
-}
-
-#[test]
-fn setter_single_locale() {
-    let head = get_head(&["omega"]);
-    let generator = Generator::new(head, vec![]);
-    let actual = generator.generate_setter().unwrap();
-    
-    let expected = quote! {
-        pub unsafe fn set_locale(locale: Locale) {
-            let value = match locale {
-                Locale::Omega => "OMEGA",
-            };
-            std::env::set_var(#ENV_LOCALE_NAME, value);
-        }
-    }.into_token_stream();
-
-    assert_tokens_eq(&expected, &actual);
-}
-
-#[test]
-fn setter_mutli_locale() {
-    let head = get_head(&["en-uk", "se", "it"]);
-    let generator = Generator::new(head, vec![]);
-    let actual = generator.generate_setter().unwrap();
-    
-    let expected = quote! {
-        pub unsafe fn set_locale(locale: Locale) {
-            let value = match locale {
-                Locale::EnUk => "EN_UK",
-                Locale::Se => "SE",
-                Locale::It => "IT",
-            };
-            std::env::set_var(#ENV_LOCALE_NAME, value);
-        }
+        pub static LOCALE: std::sync::Mutex<Locale> = 
+                std::sync::Mutex::new(Locale::EnUs);
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -341,22 +257,20 @@ fn single_key_single_locale_generate_all() {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale { En, }
         pub const LOCALES: [Locale; 1usize] = [Locale::En,];
+        pub static LOCALE: std::sync::Mutex<Locale> = 
+                std::sync::Mutex::new(Locale::En);
 
         pub fn get_locale() -> Locale {
-            let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
-                return Locale::En;
-            };
-
-            match var.as_str() {
-                _ => Locale::En,
-            }
+            *LOCALE
+            .lock()
+            .expect(#LOCALE_FAILURE_MESSAGE)
         }
 
-        pub unsafe fn set_locale(locale: Locale) {
-            let value = match locale {
-                Locale::En => "EN",
-            };
-            std::env::set_var(#ENV_LOCALE_NAME, value);
+        pub fn set_locale(locale: Locale) {
+            *LOCALE
+            .lock()
+            .expect(#LOCALE_FAILURE_MESSAGE)
+                = locale;
         }
 
         pub fn greet(locale: Locale,) -> String {
@@ -395,22 +309,20 @@ fn multi_key_single_locale_generate_all() {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale { En, }
         pub const LOCALES: [Locale; 1usize] = [Locale::En,];
-        
-        pub fn get_locale() -> Locale {
-            let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
-                return Locale::En;
-            };
+        pub static LOCALE: std::sync::Mutex<Locale> = 
+                std::sync::Mutex::new(Locale::En);
 
-            match var.as_str() {
-                _ => Locale::En,
-            }
+        pub fn get_locale() -> Locale {
+            *LOCALE
+            .lock()
+            .expect(#LOCALE_FAILURE_MESSAGE)
         }
 
-        pub unsafe fn set_locale(locale: Locale) {
-            let value = match locale {
-                Locale::En => "EN",
-            };
-            std::env::set_var(#ENV_LOCALE_NAME, value);
+        pub fn set_locale(locale: Locale) {
+            *LOCALE
+            .lock()
+            .expect(#LOCALE_FAILURE_MESSAGE)
+                = locale;
         }
 
         pub fn greet(locale: Locale,) -> String {
@@ -460,24 +372,20 @@ fn multi_key_multi_locale_generate_all() {
             Gr,
         }
         pub const LOCALES: [Locale; 2usize] = [Locale::En, Locale::Gr,];
+        pub static LOCALE: std::sync::Mutex<Locale> = 
+                std::sync::Mutex::new(Locale::En);
         
         pub fn get_locale() -> Locale {
-            let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
-                return Locale::En;
-            };
-
-            match var.as_str() {
-                "GR" => Locale::Gr,
-                _ => Locale::En,
-            }
+            *LOCALE
+            .lock()
+            .expect(#LOCALE_FAILURE_MESSAGE)
         }
 
-        pub unsafe fn set_locale(locale: Locale) {
-            let value = match locale {
-                Locale::En => "EN",
-                Locale::Gr => "GR",
-            };
-            std::env::set_var(#ENV_LOCALE_NAME, value);
+        pub fn set_locale(locale: Locale) {
+            *LOCALE
+            .lock()
+            .expect(#LOCALE_FAILURE_MESSAGE)
+                = locale;
         }
 
         pub fn greet(locale: Locale,) -> String {
@@ -523,24 +431,20 @@ fn multi_from_text() {
             Gr,
         }
         pub const LOCALES: [Locale; 2usize] = [Locale::En, Locale::Gr,];
+        pub static LOCALE: std::sync::Mutex<Locale> = 
+                std::sync::Mutex::new(Locale::En);
 
         pub fn get_locale() -> Locale {
-            let Ok(var) = std::env::var(#ENV_LOCALE_NAME) else {
-                return Locale::En;
-            };
-
-            match var.as_str() {
-                "GR" => Locale::Gr,
-                _ => Locale::En,
-            }
+            *LOCALE
+            .lock()
+            .expect(#LOCALE_FAILURE_MESSAGE)
         }
 
-        pub unsafe fn set_locale(locale: Locale) {
-            let value = match locale {
-                Locale::En => "EN",
-                Locale::Gr => "GR",
-            };
-            std::env::set_var(#ENV_LOCALE_NAME, value);
+        pub fn set_locale(locale: Locale) {
+            *LOCALE
+            .lock()
+            .expect(#LOCALE_FAILURE_MESSAGE)
+                = locale;
         }
 
         pub fn greet(locale: Locale,) -> String {

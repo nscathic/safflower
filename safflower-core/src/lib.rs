@@ -1,5 +1,7 @@
 #![doc = include_str!("../readme.md")]
 
+pub const LOCALE_FAILURE_MESSAGE: &str = "could not acquire current locale";
+
 pub mod error;
 pub mod reader;
 pub mod parser;
