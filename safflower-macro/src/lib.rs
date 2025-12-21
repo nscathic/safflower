@@ -9,13 +9,24 @@ use syn::{parse, parse_macro_input};
 
 use crate::text::Texter;
 
+// mod load;
 mod text;
 
 #[proc_macro]
 /// Loads a file from the specified path and parses it as a collection of text
-/// entries (see crate documentation for details).
+/// entries (see crate documentation for more details).
 /// 
-/// Generates an enum for Locales, and a bunch of functions to get the texts.
+/// Generates an enum for locales, and a bunch of functions to get the texts.
+/// 
+/// ## File
+/// The file must declare locales up top, with `!locales` followed by 
+/// whitespace-separated names, and then list entries as `KEY: LOC "VALUE"`. 
+/// Whitespace is completely ignored
+/// 
+/// ## Locales
+/// The locales come from the config, so e.g. `!locales en es fr` would give 
+/// you three locales, and an enum with the variants `En`, `Es`, and `Fr`, in 
+/// that order.
 pub fn load(input: TokenStream) -> TokenStream {
     let (path, source) = match open_file(input) {
         Ok(r) => r,

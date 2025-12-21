@@ -1,9 +1,9 @@
 [package]
 name = "safflower-macro"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 authors = ["nscathic"]
-license-file = "license.md"
+license = "MIT"
 description = "A localising tool with macros to statically allocate formattable text."
 repository = "https://github.com/nscathic/safflower"
 readme = "readme.md"
@@ -11,9 +11,10 @@ keywords = ["localisation", "localization", "language", "formatting"]
 categories = ["internationalization", "localization"]
 
 [dependencies]
+# safflower-core  = {path = "../safflower-core"}
+safflower-core = "0.2.1"
 proc-macro2 = "1.0.103"
 quote = "1.0.42"
-safflower-core = "0.2.0"
 syn = "2.0.111"
 
 [lib]

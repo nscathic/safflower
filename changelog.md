@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [0.2.1] 2025-12-21
+### Changed
+- The routine for parsing args has been corrected, so that arguments may now only start with an alphabetic character or be all digits. This gets rid of the "redundant arguments" error.
+
+## [0.2.0] 2025-12-21
 ### Changed
 - The current locale is no longer kept in an environmnet var and matched on; it is now a static mutex. This change speeds up reading by ~30 %.
 

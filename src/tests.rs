@@ -20,6 +20,19 @@ pub fn two_locales_direct() {
 }
 
 #[test]
+pub fn two_tight() {
+    load!("test-data/tight_two.txt");
+
+    let locale = localisation::Locale::L1;
+    assert_eq!(localisation::k1(locale), "11");
+    assert_eq!(localisation::k2(locale), "21");
+
+    let locale = localisation::Locale::L2;
+    assert_eq!(localisation::k1(locale), "12");
+    assert_eq!(localisation::k2(locale), "22");
+}
+
+#[test]
 pub fn two_locales_macro() {
     load!("test-data/greet_en_se.txt");
     localisation::set_locale(localisation::Locale::En);

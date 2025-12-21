@@ -2,6 +2,30 @@ use crate::{LOCALE_FAILURE_MESSAGE, parser::Parser, reader::CharReader};
 
 use super::*;
 
+fn get_head(locales: &[&str]) -> Head {
+    let mut head = Head::default();
+    head.set_locales(locales).unwrap();
+    head
+}
+
+fn assert_tokens_eq(expected: &TokenStream, actual: &TokenStream) {
+    let expected = expected.to_string();
+    let actual = actual.to_string();
+
+    if expected != actual {
+        panic!(
+            "expected != actual\n{}\nexpected: {}\nactual:   {}",
+            colored_diff::PrettyDifference {
+                expected: &expected,
+                actual: &actual,
+            },
+            expected,
+            actual,
+        );
+    }
+}
+
+
 #[test]
 fn enum_no_locales() {
     let head = Head::default();
@@ -121,7 +145,7 @@ fn single_key_single_locale_single_arg() {
             name: impl std::fmt::Display,
         ) -> String {
             match locale {
-                Locale::En => format!("hi {name}", name,),
+                Locale::En => format!("hi {name}",),
             }
         }
     };
@@ -219,9 +243,9 @@ fn parse_invalid_arguments() {
 fn parse_single_arguments() {
     for (line, arg) in [
         ("Hello {name}", "name"),
-        ("{0} is really cool", "arg0"),
+        ("{0} is really cool", "0"),
         ("{arg-b}", "arg_b"),
-        ("{}", "arg0"),
+        ("{}", "0"),
     ] {
         let result = get_arguments(line).unwrap();
         assert_eq!(result, vec![arg]);
@@ -232,8 +256,8 @@ fn parse_single_arguments() {
 fn parse_mutliple_arguments() {
     for (line, arg) in [
         ("Hello {name}, I'm {name2}", vec!["name", "name2"]),
-        ("{0}{1}{3}", vec!["arg0", "arg1", "arg3"]),
-        ("{}{}{}", vec!["arg0", "arg1", "arg2"]),
+        ("{0}{1}{3}", vec!["0", "1", "3"]),
+        ("{}{}{}", vec!["0", "1", "2"]),
     ] {
         let result = get_arguments(line).unwrap();
         assert_eq!(result, arg);
@@ -463,27 +487,4 @@ fn multi_from_text() {
     };
 
     assert_tokens_eq(&expected, &actual);
-}
-
-fn get_head(locales: &[&str]) -> Head {
-    let mut head = Head::default();
-    head.set_locales(locales).unwrap();
-    head
-}
-
-fn assert_tokens_eq(expected: &TokenStream, actual: &TokenStream) {
-    let expected = expected.to_string();
-    let actual = actual.to_string();
-
-    if expected != actual {
-        panic!(
-            "expected != actual\n{}\nexpected: {}\nactual:   {}",
-            colored_diff::PrettyDifference {
-                expected: &expected,
-                actual: &actual,
-            },
-            expected,
-            actual,
-        );
-    }
 }

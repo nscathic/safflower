@@ -1,0 +1,6 @@
+!locales en
+text:
+    en "Hello!"
+
+text-with-args: 
+    en "Hi {name}, I'm {me}."

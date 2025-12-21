@@ -52,9 +52,12 @@ pub enum ParseError {
     #[error("value contains unopened closing brace '}}'")]
     ExtraClosingBrace,
 
-    #[error("line \"{0}\" contains argument with invalid char \"{1}\", but \
-    must be only alphanumeric, '-', or '_'")]
-    ArgBadChar(String, char),
+    #[error("line \"{0}\" contains argument \"{1}\" with invalid char \
+        \"{2}\", but must be only alphanumeric, '-', or '_'")]
+    ArgBadChar(String, String, char),
+    #[error("line \"{0}\" contains argument \"{1}\" that starts with \
+        \"{2}\", but it must start with an alphabetic character")]
+    ArgBadStart(String, String, char),
 
 }
 

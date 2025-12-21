@@ -1,3 +1,5 @@
+#![doc = include_str!("../readme.md")]
+
 #[cfg(test)]
 mod tests;
 

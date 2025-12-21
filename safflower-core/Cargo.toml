@@ -1,9 +1,9 @@
 [package]
 name = "safflower-core"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 authors = ["nscathic"]
-license-file = "license.md"
+license = "MIT"
 description = "A localising tool with macros to statically allocate formattable text."
 repository = "https://github.com/nscathic/safflower"
 readme = "readme.md"

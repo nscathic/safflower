@@ -143,24 +143,37 @@ impl Generator {
     fn generate_from_key(&self, key: Key) -> Result<TokenStream, ParseError> {
         let Key { id, comment, entries } = key;
 
-        let args = get_arguments(&entries[0])?;
+        let arguments = get_arguments(&entries[0])?;
         
         for (i, e) in entries.iter().enumerate().skip(1) {
             let a = get_arguments(e)?;
             assert!(
-                a == args,
+                a == arguments,
                 "in key \"{id}\", entry {} has arguments {a:?}, but entry \
-                {} has arguments {args:?}",
+                {} has arguments {arguments:?}",
                 self.locales[0].1,
                 self.locales[i].1,
             );
         }
-        let args = args.into_iter()
-        .map(|a| syn::Ident::new(&a, Span::call_site()))
-        .collect::<Vec<_>>();
+
+        // All go to params, but only positinal go to arguments
+        let (positional, named): (Vec<_>, Vec<_>) = arguments
+        .into_iter()
+        .partition(|a| a.chars().all(char::is_numeric));
+
+        let named = named
+        .into_iter()
+        .map(|a| syn::Ident::new(&a, Span::call_site()));
+
+        let positional = positional
+        .into_iter()
+        .map(|i| format!("arg{i}"))
+        .map(|a| syn::Ident::new(&a, Span::call_site()));
+
+        let arguments = positional.clone().collect::<Vec<_>>();
+        let params = named.chain(positional);
 
         let id = syn::Ident::new(&id, Span::call_site());
-        
         let comment = comment.map(|c| quote! {#[doc = #c]});
 
         let entries = entries
@@ -169,7 +182,7 @@ impl Generator {
         .map(|(i, entry)| {
             let locale = &self.locales[i].0;
             quote! {
-                Locale::#locale => format!(#entry, #(#args,)*)
+                Locale::#locale => format!(#entry, #(#arguments,)*)
             }
         });
 
@@ -177,7 +190,7 @@ impl Generator {
             #comment
             pub fn #id(
                 locale: Locale,
-                #(#args:impl std::fmt::Display,)*
+                #(#params:impl std::fmt::Display,)*
             ) -> String {
                 match locale {
                     #(#entries,)*
@@ -204,11 +217,17 @@ fn get_arguments(key: &str) -> Result<Vec<String>, ParseError> {
             '}' if !opened => return Err(ParseError::ExtraClosingBrace),
             '}' => {
                 if argument.is_empty() {
-                    argument = format!("arg{unnamed_indexer}");
+                    argument = format!("{unnamed_indexer}");
                     unnamed_indexer += 1;
                 }
-                else if argument.starts_with(|c: char| c.is_ascii_digit()) {
-                    argument = format!("arg{argument}");
+                else if !argument.starts_with(
+                    |c: char| c.is_ascii_alphabetic()
+                ) && !argument.chars().all(char::is_numeric)  {
+                    return Err(ParseError::ArgBadStart(
+                        key.to_string(), 
+                        shorten(&argument), 
+                        c,
+                    ))
                 }
 
                 if !arguments.contains(&argument) {                        
@@ -227,6 +246,7 @@ fn get_arguments(key: &str) -> Result<Vec<String>, ParseError> {
                 validate_char(c)
                 .map_err(|c| ParseError::ArgBadChar(
                     shorten(key), 
+                    shorten(&argument),
                     c,
                 ))?
             ),
