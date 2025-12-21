@@ -22,14 +22,10 @@ pub fn two_locales_direct() {
 #[test]
 pub fn two_locales_macro() {
     load!("test-data/greet_en_se.txt");
-    unsafe {
-        localisation::set_locale(localisation::Locale::En);
-    }
+    localisation::set_locale(localisation::Locale::En);
     assert_eq!(text!(greet), "Hi!");
 
-    unsafe {
-        localisation::set_locale(localisation::Locale::Se);
-    }
+    localisation::set_locale(localisation::Locale::Se);
     assert_eq!(text!(greet), "Hej!");
 }
 
