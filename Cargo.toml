@@ -11,8 +11,8 @@ keywords = ["localisation", "localization", "language", "formatting"]
 categories = ["internationalization", "localization"]
 
 [dependencies]
-safflower-core  = { version="0.2.0", path="safflower-core" }
-safflower-macro = { version="0.2.0", path="safflower-macro" }
+safflower-core  = "0.2.0"
+safflower-macro = "0.2.0"
 
 [workspace]
 members = ["safflower-core", "safflower-macro"]
