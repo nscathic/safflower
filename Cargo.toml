@@ -9,6 +9,7 @@ repository = "https://github.com/nscathic/safflower"
 readme = "readme.md"
 keywords = ["localisation", "localization", "language", "formatting"]
 categories = ["internationalization", "localization"]
+exclude = ["src/bin"]
 
 [dependencies]
 safflower-core  = "0.2.1"
@@ -25,4 +26,3 @@ pedantic = { priority = -1, level = "deny" }
 
 [dev-dependencies]
 quote = "1.0.42"
-

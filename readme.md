@@ -3,7 +3,7 @@
 
 [![Crates.io Version](https://img.shields.io/crates/v/safflower)](https://crates.io/crates/safflower)
 [![docs](https://img.shields.io/docsrs/safflower?logo=rust)](https://docs.rs/safflower/latest/)
-[![Repo](https://img.shields.io/badge/github-repo-blue?logo=github)]()
+[![Repo](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/nscathic/safflower)
 [![License](https://img.shields.io/badge/license-MIT-blue)](#license)
 
 
