@@ -13,14 +13,14 @@ impl Configuration {
     pub fn parse_config(&mut self, line: &str) -> Result<(), Error> {
         let mut parts = line.split_whitespace();
         let Some(key) = parts.next() else { 
-            return Err(ParseError::EmptyKey.into())
+            return Err(ParseError::ConfigEmptyKey.into())
         };
 
         let values = parts.collect::<Vec<_>>();
 
         match key {
             "locales" => self.set_locales(values),
-            _ => Err(ParseError::UnknownKey((*key).to_string()).into()),
+            _ => Err(ParseError::ConfigUnknownKey((*key).to_string()).into()),
         }
     }
 
@@ -37,7 +37,7 @@ impl Configuration {
         parts: Vec<&str>,
     ) -> Result<(), Error> {
         if parts.is_empty() { 
-            return Err(ParseError::MissingValues("locales").into()); 
+            return Err(ParseError::ConfigMissingValues("locales").into()); 
         }
 
         for part in parts {

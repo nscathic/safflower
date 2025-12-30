@@ -38,7 +38,11 @@ impl Name {
         }
     }
 
-    const fn validate_char(c: char) -> Result<char, ReadError> {
+    /// Returns the valid version of any supplied char.
+    /// 
+    /// # Errors 
+    /// If the char cannot be made valid.
+    pub const fn validate_char(c: char) -> Result<char, ReadError> {
         match c {
             '0'..='9' | 'a'..='z' => Ok(c),
             

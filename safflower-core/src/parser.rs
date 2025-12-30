@@ -1,5 +1,5 @@
 use crate::{
-    error::Error, name::Name, reader::{ReadError, Token}, shorten, validate_char
+    error::Error, name::Name, reader::{ReadError, Token}, shorten
 };
 
 mod error;
@@ -291,8 +291,8 @@ fn extract_arguments(key: &str) -> Result<Vec<String>, ParseError> {
 
             // Don't copy the formatting part
             c if opened && !formatting => argument.push(
-                validate_char(c)
-                .map_err(|c| ParseError::ArgBadChar(
+                Name::validate_char(c)
+                .map_err(|_| ParseError::ArgBadChar(
                     shorten(key), 
                     shorten(&argument),
                     c,

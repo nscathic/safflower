@@ -8,20 +8,6 @@ pub mod reader;
 pub mod parser;
 pub mod generator;
 
-const fn validate_char(c: char) -> Result<char, char> {
-    match c {
-        '0'..='9' | 
-        'a'..='z' => Ok(c),
-        
-        'A'..='Z' => Ok(c.to_ascii_lowercase()),
-        
-        '_' |
-        '-' => Ok('_'),
-
-        c => Err(c),
-    }    
-}
-
 fn shorten(line: impl AsRef<str>) -> String {
     let len = line.as_ref().len();
     let mut it = line.as_ref().chars();
