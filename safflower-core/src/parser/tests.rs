@@ -1,11 +1,22 @@
-use crate::{
-    error::ParseError, parser::{Key, Parser, Head}, reader::Token
-};
+use crate::{name::Name, reader::Token};
+use super::*;
 
-fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Key>, ParseError> {
-    let mut parser = Parser::default();
-    parser.parse(tokens.into_iter())?;
-    Ok(parser.keys)
+fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Key>, Error> {
+    Parser::new(
+        tokens.into_iter().map(Ok)
+    )
+    .parse()
+    .map(|pd| pd.keys)
+}
+
+fn name(str: &str) -> Name { Name::try_from(str).unwrap() }
+
+fn names<const S: usize>(strs: [&str; S]) -> Vec<Name> {
+    strs
+    .into_iter()
+    .map(Name::try_from)
+    .collect::<Result<_,_>>()
+    .unwrap()
 }
 
 #[test]
@@ -23,8 +34,8 @@ fn bad_locales() {
     ];
 
     for input in ins {
-        let mut head = Head::default();
-        let result = head.parse_config(input);
+        let mut configuration = Configuration::default();
+        let result = configuration.parse_config(input);
 
         assert!(result.is_err(), "'{input}' should be err");
     }
@@ -33,22 +44,22 @@ fn bad_locales() {
 #[test]
 fn ok_locales() {
     let ins_outs = [
-        ("locales en",         vec!["en"]),
-        ("locales EN",         vec!["en"]),
-        ("locales long-test",  vec!["long_test"]),
-        ("locales b-",         vec!["b_"]),
-        ("locales b_-",        vec!["b__"]),
-        ("locales se02 SE01",  vec!["se02", "se01"]),
-        ("locales it fr",      vec!["it", "fr"]),
-        ("locales \tit   fr",  vec!["it", "fr"]),
+        ("locales en",         names(["en"])),
+        ("locales EN",         names(["en"])),
+        ("locales long-test",  names(["long_test"])),
+        ("locales b-",         names(["b_"])),
+        ("locales b_-",        names(["b__"])),
+        ("locales se02 SE01",  names(["se02", "se01"])),
+        ("locales it fr",      names(["it", "fr"])),
+        ("locales \tit   fr",  names(["it", "fr"])),
     ];
 
     for (input, output) in ins_outs {
-        let mut head = Head::default();
-        let result = head.parse_config(input);
+        let mut configuration = Configuration::default();
+        let result = configuration.parse_config(input);
 
         assert!(result.is_ok(), "'{input}' should be ok; got {result:?}");
-        assert_eq!(head.locales, output);
+        assert_eq!(configuration.locales, output);
     }
 }
 
@@ -56,8 +67,8 @@ fn ok_locales() {
 fn minimal_case() {
     let tokens = vec![
         Token::Config(String::from("locales a")),
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("a")),
+        Token::Key(name("key")),
+        Token::Locale(name("a")),
         Token::Value(String::from("value")),
     ];
 
@@ -68,12 +79,13 @@ fn minimal_case() {
         keys,
         vec![
             Key { 
-                id: String::from("key"), 
+                id: name("key"), 
+                arguments: vec![],
                 comment: None, 
                 entries: vec![String::from("value")] 
             }
         ]
-    )
+    );
 }
 
 #[test] 
@@ -81,8 +93,8 @@ fn key_comment() {
     let tokens = vec![
         Token::Config(String::from("locales a")),
         Token::Comment(String::from("hi!")),
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("a")),
+        Token::Key(name("key")),
+        Token::Locale(name("a")),
         Token::Value(String::from("value")),
     ];
 
@@ -93,21 +105,22 @@ fn key_comment() {
         keys,
         vec![
             Key { 
-                id: String::from("key"), 
+                id: name("key"), 
+                arguments: vec![],
                 comment: Some(String::from("hi!")), 
                 entries: vec![String::from("value")] 
             }
         ]
-    )
+    );
 }
 
 #[test] 
 fn entry_comments() {
     let tokens = vec![
         Token::Config(String::from("locales a")),
-        Token::Key(String::from("key")),
+        Token::Key(name("key")),
         Token::Comment(String::from("hi!")),
-        Token::Locale(String::from("a")),
+        Token::Locale(name("a")),
         Token::Value(String::from("value")),
     ];
 
@@ -116,8 +129,8 @@ fn entry_comments() {
 
     let tokens = vec![
         Token::Config(String::from("locales a")),
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("a")),
+        Token::Key(name("key")),
+        Token::Locale(name("a")),
         Token::Comment(String::from("hi!")),
         Token::Value(String::from("value")),
     ];
@@ -131,22 +144,23 @@ fn entry_comments() {
         keys_1,
         vec![
             Key { 
-                id: String::from("key"), 
+                id: name("key"), 
+                arguments: vec![],
                 comment: Some(String::from(" # Locale notes\n- *a*: hi!\n")), 
                 entries: vec![String::from("value")] 
             }
         ]
-    )
+    );
 }
 
 #[test] 
 fn mutli_locales() {
     let tokens = vec![
         Token::Config(String::from("locales a b")),
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("a")),
+        Token::Key(name("key")),
+        Token::Locale(name("a")),
         Token::Value(String::from("value A")),
-        Token::Locale(String::from("b")),
+        Token::Locale(name("b")),
         Token::Value(String::from("value B")),
     ];
 
@@ -157,7 +171,8 @@ fn mutli_locales() {
         keys,
         vec![
             Key { 
-                id: String::from("key"), 
+                id: name("key"), 
+                arguments: vec![],
                 comment: None, 
                 entries: vec![
                     String::from("value A"),
@@ -165,16 +180,16 @@ fn mutli_locales() {
                 ] 
             }
         ]
-    )
+    );
 }
 
 #[test] 
 fn missing_locales() {
     let tokens = vec![
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("a")),
+        Token::Key(name("key")),
+        Token::Locale(name("a")),
         Token::Value(String::from("value A")),
-        Token::Locale(String::from("b")),
+        Token::Locale(name("b")),
         Token::Value(String::from("value B")),
     ];
 
@@ -185,8 +200,8 @@ fn missing_locales() {
 fn missing_declared_locale() {
     let tokens = vec![
         Token::Config(String::from("locales a b")),
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("a")),
+        Token::Key(name("key")),
+        Token::Locale(name("a")),
         Token::Value(String::from("value A")),
     ];
 
@@ -197,9 +212,9 @@ fn missing_declared_locale() {
 fn using_declared_default() {
     let tokens = vec![
         Token::Config(String::from("locales a b")),
-        Token::Key(String::from("key")),
+        Token::Key(name("key")),
         Token::Value(String::from("value A")),
-        Token::Locale(String::from("b")),
+        Token::Locale(name("b")),
         Token::Value(String::from("value B")),
     ];
 
@@ -209,8 +224,8 @@ fn using_declared_default() {
 #[test] 
 fn using_and_not_default() {
     let tokens = vec![
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("b")),
+        Token::Key(name("key")),
+        Token::Locale(name("b")),
         Token::Value(String::from("value B")),
     ];
 
@@ -218,10 +233,108 @@ fn using_and_not_default() {
 
     let tokens = vec![
         Token::Config(String::from("locales b")),
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("b")),
+        Token::Key(name("key")),
+        Token::Locale(name("b")),
         Token::Value(String::from("value B")),
     ];
 
     assert!(parse_tokens(tokens).is_ok());
+}
+
+#[test]
+fn parse_no_arguments() {
+    for line in [
+        "Hello",
+        "",
+    ] {
+        let result = extract_arguments(line).unwrap();
+        assert!(result.is_empty());
+    }
+}
+
+#[test]
+fn parse_invalid_arguments() {
+    for line in [
+        "Hi {$arg}",
+        "I want a {{}",
+        "Do you want a {}}?",
+        "No, but a {?}",
+    ] {
+        let result = extract_arguments(line);
+        assert!(
+            result.is_err(), 
+            "{line} should fault, is instead {:?}", 
+            result.unwrap(),
+        );
+    }
+}
+
+#[test]
+fn parse_single_arguments() {
+    for (line, arg) in [
+        ("Hello {name}", "name"),
+        ("{0} is really cool", "0"),
+        ("{arg-b}", "arg_b"),
+        ("{}", "0"),
+    ] {
+        let result = extract_arguments(line).unwrap();
+        assert_eq!(result, vec![arg]);
+    }
+}
+
+#[test]
+fn parse_mutliple_arguments() {
+    for (line, arg) in [
+        ("Hello {name}, I'm {name2}", vec!["name", "name2"]),
+        ("{0}{1}{3}", vec!["0", "1", "3"]),
+        ("{}{}{}", vec!["0", "1", "2"]),
+    ] {
+        let result = extract_arguments(line).unwrap();
+        assert_eq!(result, arg);
+    }
+}
+
+#[test] 
+fn separate_key() {
+    let tokens = vec![
+        Token::Config(String::from("locales a b")),
+        Token::Key(name("key")),
+        Token::Locale(name("a")),
+        Token::Value(String::from("value A")),
+        Token::Key(name("key2")),
+        Token::Locale(name("a")),
+        Token::Value(String::from("value A")),
+        Token::Key(name("key")),
+        Token::Locale(name("b")),
+        Token::Value(String::from("value B")),
+        Token::Key(name("key2")),
+        Token::Locale(name("b")),
+        Token::Value(String::from("value B")),
+    ];
+
+    let keys = parse_tokens(tokens).expect("should be ok");
+
+    assert_eq!(
+        keys,
+        vec![
+            Key { 
+                id: name("key"), 
+                arguments: vec![],
+                comment: None, 
+                entries: vec![
+                    String::from("value A"),
+                    String::from("value B"), 
+                ] 
+            }, 
+            Key { 
+                id: name("key2"), 
+                arguments: vec![],
+                comment: None, 
+                entries: vec![
+                    String::from("value A"),
+                    String::from("value B"), 
+                ] 
+            }
+        ]
+    );
 }

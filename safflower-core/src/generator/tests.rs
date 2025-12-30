@@ -1,44 +1,42 @@
+use std::vec;
+
 use crate::{LOCALE_FAILURE_MESSAGE, parser::Parser, reader::CharReader};
 
 use super::*;
 
-fn get_head(locales: &[&str]) -> Head {
-    let mut head = Head::default();
-    head.set_locales(locales).unwrap();
-    head
+fn name(str: &str) -> Name { Name::try_from(str).unwrap() }
+
+fn names<const S: usize>(strs: [&str; S]) -> Vec<Name> {
+    strs
+    .into_iter()
+    .map(Name::try_from)
+    .collect::<Result<_,_>>()
+    .unwrap()
 }
+
 
 fn assert_tokens_eq(expected: &TokenStream, actual: &TokenStream) {
     let expected = expected.to_string();
     let actual = actual.to_string();
 
-    if expected != actual {
-        panic!(
-            "expected != actual\n{}\nexpected: {}\nactual:   {}",
-            colored_diff::PrettyDifference {
-                expected: &expected,
-                actual: &actual,
-            },
-            expected,
-            actual,
-        );
-    }
+    assert!(expected == actual,
+        "expected != actual\n{}\nexpected: {}\nactual:   {}",
+        colored_diff::PrettyDifference {
+            expected: &expected,
+            actual: &actual,
+        },
+        expected,
+        actual,
+    );
 }
 
-
-#[test]
-fn enum_no_locales() {
-    let head = Head::default();
-    let generator = Generator::new(head, Vec::new());
-    assert!(generator.generate_enum().is_err());
-}
 
 #[test]
 fn enum_single_locale() {
-    let head = get_head(&["en"]);
+    let locales = names(["en"]);
 
-    let generator = Generator::new(head, Vec::new());
-    let actual = generator.generate_enum().unwrap();
+    let generator = Generator::new(locales, Vec::new());
+    let actual = generator.generate_enum();
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale { En, }
@@ -52,10 +50,10 @@ fn enum_single_locale() {
 
 #[test]
 fn enum_mutli_locales() {
-    let head = get_head(&["en", "it", "fr"]);
+    let head = names(["en", "it", "fr"]);
 
     let generator = Generator::new(head, Vec::new());
-    let actual = generator.generate_enum().unwrap();
+    let actual = generator.generate_enum();
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
@@ -77,10 +75,10 @@ fn enum_mutli_locales() {
 
 #[test]
 fn enum_variant_locales() {
-    let head = get_head(&["en-US", "en_uk", "en-in"]);
+    let locales = names(["en-US", "en_uk", "en-in"]);
     
-    let generator = Generator::new(head, Vec::new());
-    let actual = generator.generate_enum().unwrap();
+    let generator = Generator::new(locales, Vec::new());
+    let actual = generator.generate_enum();
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
@@ -102,16 +100,17 @@ fn enum_variant_locales() {
 
 #[test]
 fn single_key_single_locale() {
-    let head = get_head(&["en"]);
+    let locales = names(["en"]);
     let key = Key { 
-        id: String::from("greet"), 
+        id: name("greet"), 
+        arguments: vec![],
         comment: Some(String::from("Common greeting.")),
         entries: vec![
             String::from("hi"),
         ]
     };
-    let generator = Generator::new(head, vec![key.clone()]);
-    let actual = generator.generate_from_key(key).unwrap();
+    let generator = Generator::new(locales, vec![key.clone()]);
+    let actual = generator.generate_from_key(key);
 
     let expected = quote! {
         #[doc = "Common greeting."]
@@ -127,16 +126,17 @@ fn single_key_single_locale() {
 
 #[test]
 fn single_key_single_locale_single_arg() {
-    let head = get_head(&["en"]);
+    let locales = names(["en"]);
     let key = Key { 
-        id: String::from("greet"), 
+        id: name("greet"), 
+        arguments: vec![String::from("name")],
         comment: Some(String::from("Common greeting.")),
         entries: vec![
             String::from("hi {name}"),
         ]
     };
-    let generator = Generator::new(head, vec![key.clone()]);
-    let actual = generator.generate_from_key(key).unwrap();
+    let generator = Generator::new(locales, vec![key.clone()]);
+    let actual = generator.generate_from_key(key);
 
     let expected = quote! {
         #[doc = "Common greeting."]
@@ -155,16 +155,21 @@ fn single_key_single_locale_single_arg() {
 
 #[test]
 fn single_key_single_locale_multi_arg() {
-    let head = get_head(&["en"]);
+    let locales = names(["en"]);
     let key = Key { 
-        id: String::from("greet"), 
+        id: name("greet"), 
+        arguments: vec![
+            String::from("0"), 
+            String::from("1"), 
+            String::from("2")
+        ],
         comment: Some(String::from("Common greeting.")),
         entries: vec![
             String::from("hi {0}, {1}, and {2}"),
         ]
     };
-    let generator = Generator::new(head, vec![key.clone()]);
-    let actual = generator.generate_from_key(key).unwrap();
+    let generator = Generator::new(locales, vec![key.clone()]);
+    let actual = generator.generate_from_key(key);
 
     let expected = quote! {
         #[doc = "Common greeting."]
@@ -185,9 +190,10 @@ fn single_key_single_locale_multi_arg() {
 
 #[test]
 fn single_key_mutli_locale() {
-    let head = get_head(&["en", "se", "it"]);
+    let locales = names(["en", "se", "it"]);
     let key = Key { 
-        id: String::from("surprise"), 
+        id: name("surprise"), 
+        arguments: vec![],
         comment: None, 
         entries: vec![
             String::from("oh my god"),
@@ -195,8 +201,8 @@ fn single_key_mutli_locale() {
             String::from("oddio"),
         ]
     };
-    let generator = Generator::new(head, vec![key.clone()]);
-    let actual = generator.generate_from_key(key).unwrap();
+    let generator = Generator::new(locales, vec![key.clone()]);
+    let actual = generator.generate_from_key(key);
 
     let expected = quote! {
         pub fn surprise(locale: Locale,) -> String {
@@ -212,70 +218,18 @@ fn single_key_mutli_locale() {
 }
 
 #[test]
-fn parse_no_arguments() {
-    for line in [
-        "Hello",
-        "",
-    ] {
-        let result = get_arguments(line).unwrap();
-        assert!(result.is_empty());
-    }
-}
-
-#[test]
-fn parse_invalid_arguments() {
-    for line in [
-        "Hi {$arg}",
-        "I want a {{}",
-        "Do you want a {}}?",
-        "No, but a {?}",
-    ] {
-        let result = get_arguments(line);
-        assert!(
-            result.is_err(), 
-            "{line} should fault, is instead {:?}", 
-            result.unwrap(),
-        );
-    }
-}
-
-#[test]
-fn parse_single_arguments() {
-    for (line, arg) in [
-        ("Hello {name}", "name"),
-        ("{0} is really cool", "0"),
-        ("{arg-b}", "arg_b"),
-        ("{}", "0"),
-    ] {
-        let result = get_arguments(line).unwrap();
-        assert_eq!(result, vec![arg]);
-    }
-}
-
-#[test]
-fn parse_mutliple_arguments() {
-    for (line, arg) in [
-        ("Hello {name}, I'm {name2}", vec!["name", "name2"]),
-        ("{0}{1}{3}", vec!["0", "1", "3"]),
-        ("{}{}{}", vec!["0", "1", "2"]),
-    ] {
-        let result = get_arguments(line).unwrap();
-        assert_eq!(result, arg);
-    }
-}
-
-#[test]
 fn single_key_single_locale_generate_all() {
-    let head = get_head(&["en"]);
+    let head = names(["en"]);
     let key = Key { 
-        id: String::from("greet"), 
+        id: name("greet"), 
+        arguments: vec![],
         comment: None, 
         entries: vec![
             String::from("hi"),
         ]
     };
     let generator = Generator::new(head, vec![key]);
-    let actual = generator.generate().unwrap();
+    let actual = generator.generate();
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -309,17 +263,19 @@ fn single_key_single_locale_generate_all() {
 
 #[test]
 fn multi_key_single_locale_generate_all() {
-    let head = get_head(&["en"]);
+    let head = names(["en"]);
     let keys = vec![
         Key { 
-            id: String::from("greet"), 
+            id: name("greet"), 
+            arguments: vec![],
             comment: None, 
             entries: vec![
                 String::from("hi"),
             ]
         },
         Key { 
-            id: String::from("other_greet"), 
+            id: name("other_greet"), 
+            arguments: vec![],
             comment: None, 
             entries: vec![
                 String::from("hello"),
@@ -327,7 +283,7 @@ fn multi_key_single_locale_generate_all() {
         },
     ];
     let generator = Generator::new(head, keys);
-    let actual = generator.generate().unwrap();
+    let actual = generator.generate();
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -367,10 +323,11 @@ fn multi_key_single_locale_generate_all() {
 
 #[test]
 fn multi_key_multi_locale_generate_all() {
-    let head = get_head(&["en", "gr"]);
+    let head = names(["en", "gr"]);
     let keys = vec![
         Key { 
-            id: String::from("greet"), 
+            id: name("greet"), 
+            arguments: vec![],
             comment: None, 
             entries: vec![
                 String::from("hi"),
@@ -378,7 +335,8 @@ fn multi_key_multi_locale_generate_all() {
             ]
         },
         Key { 
-            id: String::from("other_greet"), 
+            id: name("other_greet"), 
+            arguments: vec![],
             comment: None, 
             entries: vec![
                 String::from("hello"),
@@ -387,7 +345,7 @@ fn multi_key_multi_locale_generate_all() {
         },
     ];
     let generator = Generator::new(head, keys);
-    let actual = generator.generate().unwrap();
+    let actual = generator.generate();
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -442,11 +400,11 @@ fn multi_from_text() {
             gr \"καλημέρα\"
     ";
     let reader = CharReader::new(source);
-    let mut parser = Parser::default();
-    parser.parse(reader).unwrap();
-    let (head, keys) = parser.extract();
-    let generator = Generator::new(head, keys);
-    let actual = generator.generate().unwrap();
+    
+    let parsed = Parser::new(reader).parse().unwrap();
+
+    let generator = Generator::new(parsed.locales, parsed.keys);
+    let actual = generator.generate();
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]

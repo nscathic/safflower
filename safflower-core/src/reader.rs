@@ -1,9 +1,13 @@
 use std::str::Chars;
-use crate::is_valid_char;
+use crate::name::Name;
+
+mod error;
+pub use error::ReadError;
 
 #[cfg(test)]
 mod tests;
 
+#[derive(Clone)]
 pub struct CharReader<'a> {
     chars: Chars<'a>,
     buffer: Option<char>,
@@ -19,10 +23,12 @@ impl<'a> CharReader<'a> {
 
     fn read_comment(&mut self) -> Token {
         let mut comment = String::new();
+
         for c in self.chars.by_ref() {
             if c == '\n' { break; }
             comment += &c.to_string();
         }
+
         Token::Comment(comment)
     }
     
@@ -39,7 +45,7 @@ impl<'a> CharReader<'a> {
         Token::Config(line)
     }
     
-    fn read_value(&mut self) -> Token {
+    fn read_value(&mut self) -> Result<Token, ReadError> {
         let mut value = String::new();
         loop {
             match self.chars.next() {
@@ -50,7 +56,7 @@ impl<'a> CharReader<'a> {
                 } 
                 else {
                     // ..or end the value
-                    return Token::Value(value)
+                    return Ok(Token::Value(value))
                 },
 
                 // Any random char is added to the buffer, unchecked.
@@ -58,35 +64,30 @@ impl<'a> CharReader<'a> {
 
                 // If the iterator finished without closing the quote, you have
                 // some problems in your file.
-                None => panic!("unexpected EOF before terminating quote"),
+                None => return Err(ReadError::UnmatchedQuote),
             }
         }
     }
     
-    fn read_param(&mut self, first: char) -> Token {
-        let mut value = String::from(first);
+    fn read_param(&mut self, first: char) -> Result<Token, ReadError> {
+        let mut name = Name::new(first)?;
 
         // First we get the token
-        loop {
-            match self.chars.next() {
-                Some(c) if c.is_whitespace() => break,
-
-                // Any valid char is added to the buffer, unchecked.
-                Some(c) if is_valid_char(c) => value += &c.to_string(),
+        for char in self.chars.by_ref()  {
+            match char {
+                c if c.is_whitespace() => break,
 
                 // The next thing is a delimiter, so we have a key
-                Some(':') => return Token::Key(value),
+                ':' => return Ok(Token::Key(name)),
 
                 // The next thing is a quote, so we have a locale
-                Some('\"') => {
+                '\"' => {
                     self.buffer = Some('\"');
-                    return Token::Locale(value)
+                    return Ok(Token::Locale(name));
                 },
 
-                // Other chars are suspicious
-                Some(c) => panic!("unexpected char '{c}'"),
-
-                None => break,
+                // Any valid char is added to the buffer, unchecked.
+                c => name.add(c)?,
             }
         }
 
@@ -97,25 +98,24 @@ impl<'a> CharReader<'a> {
                 Some(c) if c.is_whitespace() => {},
 
                 // The next thing is a delimiter, so we have a key
-                Some(':') => return Token::Key(value),
+                Some(':') => return Ok(Token::Key(name)),
 
                 // The next thing is a quote, so we have a locale
                 Some('\"') => {
                     self.buffer = Some('\"');
-                    return Token::Locale(value)
+                    return Ok(Token::Locale(name));
                 },
 
                 // Other chars are suspicious
-                Some(c) => panic!("unexpected char '{c}'"),
+                Some(c) => return Err(ReadError::InvalidChar(c)),
 
-                None => panic!("unexpected EOF"),
+                None => return Err(ReadError::EOF),
             }
         }
     }
 }
-
 impl Iterator for CharReader<'_> {
-    type Item = Token;
+    type Item = Result<Token, ReadError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -124,15 +124,16 @@ impl Iterator for CharReader<'_> {
                 None => self.chars.next(),
             };
 
-            match c {
-                Some(c) if c.is_whitespace() => {},
+            return match c? {
+                '#' => Some(Ok(self.read_comment())),
+                '!' => Some(Ok(self.read_config())),
+                '"' => Some(self.read_value()),
 
-                None =>      return None,
-                Some('#') => return Some(self.read_comment()),
-                Some('!') => return Some(self.read_config()),
-                Some('"') => return Some(self.read_value()),
-                Some(c) if is_valid_char(c) => return Some(self.read_param(c)),
-                Some(c) => panic!("unexpected char '{c}'"),
+                c if c.is_whitespace() => continue,
+
+                c if Name::is_valid(c) => Some(self.read_param(c)),
+
+                c => Some(Err(ReadError::InvalidChar(c))),
             }
         }
     }
@@ -143,8 +144,20 @@ pub enum Token {
     Config(String),
     Comment(String),
     
-    Key(String),
-    Locale(String),
+    Key(Name),
+    Locale(Name),
 
     Value(String),
+}
+
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Config(c) => write!(f, "Config({c})"),
+            Self::Comment(c) => write!(f, "Comment({c})"),
+            Self::Key(name) => write!(f, "Key({name})"),
+            Self::Locale(name) => write!(f, "Locale({name})"),
+            Self::Value(v) => write!(f, "Value({v})"),
+        }
+    }
 }

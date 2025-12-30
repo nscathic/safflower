@@ -1,7 +1,7 @@
 use super::*;
 
-fn read_all(source: &str) -> Vec<Token> {
-    CharReader::new(source).collect()
+fn read_all(source: &str) -> Result<Vec<Token>, ReadError> { 
+    CharReader::new(source).collect() 
 }
 
 #[test]
@@ -13,20 +13,20 @@ fn empty() {
         " \t \n ",
     ] {
         let mut reader = CharReader::new(source);
-        assert_eq!(reader.next(), None, "src: '{source}'");
+        assert!(reader.next().is_none(), "src: '{source}'");
     }
 }
 
 #[test]
 fn key() {
-    let correct = vec![Token::Key(String::from("key"))];
+    let correct = vec![Token::Key(Name::try_from("key").unwrap())];
     for source in [
         "key:",
         "  key : ",
         "\nkey\n:",
         " \t \n key  \t: ",
     ] {
-        let tokens = read_all(source);
+        let tokens = read_all(source).unwrap();
         assert_eq!(tokens, correct, "src: '{source}'");
     }
 }
@@ -34,7 +34,7 @@ fn key() {
 #[test]
 fn loc() {
     let correct = vec![
-        Token::Locale(String::from("loc")),
+        Token::Locale(Name::try_from("loc").unwrap()),
         Token::Value(String::new()),
     ];
     for source in [
@@ -43,7 +43,7 @@ fn loc() {
         "\nloc\n\"\"",
         " \t \n loc  \t\"\" ",
     ] {
-        let tokens = read_all(source);
+        let tokens = read_all(source).unwrap();
         assert_eq!(tokens, correct, "src: '{source}'");
     }
 }
@@ -58,7 +58,7 @@ fn comment() {
         ("#text\n", "text"),
         ("#one two\n", "one two"),
     ] {
-        let tokens = read_all(source);
+        let tokens = read_all(source).unwrap();
         assert_eq!(tokens, vec![
             Token::Comment(comment.to_string()), 
         ], "src: '{source}'");
@@ -68,7 +68,7 @@ fn comment() {
 #[test]
 fn comment_config() {
     let source = "!locales en #comment";
-    let tokens = read_all(source);
+    let tokens = read_all(source).unwrap();
     assert_eq!(
         tokens,
         vec![Token::Config(String::from("locales en "))]
@@ -77,8 +77,8 @@ fn comment_config() {
 
 #[test]
 fn comment_others() {
-    let key = Token::Key(String::from("key"));
-    let loc = Token::Locale(String::from("loc"));
+    let key = Token::Key(Name::try_from("key").unwrap());
+    let loc = Token::Locale(Name::try_from("loc").unwrap());
     let val = Token::Value(String::from("value"));
     let com = Token::Comment(String::from("comment"));
     
@@ -86,10 +86,10 @@ fn comment_others() {
         ("key: #comment\n loc \"value\"", [&key, &com, &loc, &val]),
         ("key: loc \"value\" #comment",   [&key, &loc, &val, &com]),
     ] {
-        let expected = read_all(source);
+        let expected = read_all(source).unwrap();
         assert_eq!(
             expected,
-            tokens.map(|t| t.clone()),
+            tokens.map(std::clone::Clone::clone),
             "source: {source}"
         );
     }
@@ -105,7 +105,7 @@ fn config() {
         ("!text\n", "text"),
         ("!one two\n", "one two"),
     ] {
-        let tokens = read_all(source);
+        let tokens = read_all(source).unwrap();
         assert_eq!(
             tokens, 
             vec![Token::Config(comment.to_string())], 
@@ -123,7 +123,7 @@ fn value() {
         "\n\"key\"\n",
         " \t \n \"key\"  \t",
     ] {
-        let tokens = read_all(source);
+        let tokens = read_all(source).unwrap();
         assert_eq!(tokens, correct, "src: '{source}'");
     }
 }
@@ -138,10 +138,10 @@ fn one_line() {
         "key: loc \"value\"\n",
         "key   :  loc \"value\"   ",
     ] {
-        let tokens = read_all(source);
+        let tokens = read_all(source).unwrap();
         assert_eq!(tokens, vec![
-            Token::Key(String::from("key")),
-            Token::Locale(String::from("loc")),
+            Token::Key(Name::try_from("key").unwrap()),
+            Token::Locale(Name::try_from("loc").unwrap()),
             Token::Value(String::from("value")),
         ], "src: '{source}'");
     }
@@ -158,16 +158,16 @@ fn multiline() {
         sv \"svenska\"
     ";
 
-    let tokens = read_all(source);
+    let tokens = read_all(source).unwrap();
     assert_eq!(tokens, vec![
         Token::Comment(String::from("this is a comment")),
-        Token::Key(String::from("key")),
-        Token::Locale(String::from("en")),
+        Token::Key(Name::try_from("key").unwrap()),
+        Token::Locale(Name::try_from("en").unwrap()),
         Token::Value(String::from("english")),
-        Token::Locale(String::from("it")),
+        Token::Locale(Name::try_from("it").unwrap()),
         Token::Value(String::from("italiano")),
         Token::Comment(String::from(" another comment")),
-        Token::Locale(String::from("sv")),
+        Token::Locale(Name::try_from("sv").unwrap()),
         Token::Value(String::from("svenska")),
-    ])
+    ]);
 }
