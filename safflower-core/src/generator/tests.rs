@@ -401,9 +401,7 @@ fn multi_from_text() {
     ";
     let reader = CharReader::new(source);
     
-    let mut parser = Parser::default();
-    parser.parse(reader).unwrap();
-    let parsed = parser.collect().unwrap();
+    let parsed = Parser::new(reader).parse().unwrap();
 
     let generator = Generator::new(parsed.locales, parsed.keys);
     let actual = generator.generate();

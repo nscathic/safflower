@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::reader::Token;
+
 #[derive(Error, Debug)]
 pub enum ParseError {
     #[error("IO error: {0}")]
@@ -28,7 +30,7 @@ pub enum ParseError {
     #[error("encountered locale \"{0}\", but it has not been declared")]
     UndeclaredLocale(String),
     #[error("entry \"{0}\" is missing locale [{1}]")]
-    MissingLocale(String, String),
+    EntryMissingLocale(String, String),
     #[error("entry \"{0}\" does not have a locale specified for line \"{1}\", \
         but you have declared locales and so must use them")]
     UsingDefaultLocale(String, String),
@@ -62,6 +64,12 @@ pub enum ParseError {
     #[error("entry \"{1}\" for key \"{0}\" has arguments {2:?}, which \
         does not match {3:?} from the key's first entry")]
     ArgumentMismatch(String, String, Vec<String>, Vec<String>),
+    #[error("line may not start with {0}")]
+    UnexpectedToken(Token),
+    #[error("expected locale to follow, but token stream ended")]
+    ExpectedLocale,
+    #[error("expected value to follow, but token stream ended")]
+    ExpectedValue,
 }
 impl From<std::io::Error> for ParseError {
     fn from(value: std::io::Error) -> Self {

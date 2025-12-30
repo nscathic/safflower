@@ -80,6 +80,11 @@ impl Name {
         Self::validate_char(c).is_ok()
     }
 }
+impl std::fmt::Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Name \"{}\"", self.0)
+    }
+}
 impl From<Name> for String {
     fn from(value: Name) -> Self { value.0 }
 }

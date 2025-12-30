@@ -7,6 +7,7 @@ pub use error::ReadError;
 #[cfg(test)]
 mod tests;
 
+#[derive(Clone)]
 pub struct CharReader<'a> {
     chars: Chars<'a>,
     buffer: Option<char>,
@@ -147,4 +148,16 @@ pub enum Token {
     Locale(Name),
 
     Value(String),
+}
+
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Config(c) => write!(f, "Config({c})"),
+            Self::Comment(c) => write!(f, "Comment({c})"),
+            Self::Key(name) => write!(f, "Key({name})"),
+            Self::Locale(name) => write!(f, "Locale({name})"),
+            Self::Value(v) => write!(f, "Value({v})"),
+        }
+    }
 }

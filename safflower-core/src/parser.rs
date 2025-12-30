@@ -10,162 +10,185 @@ use config::Configuration;
 #[cfg(test)]
 mod tests;
 
-#[derive(Default)]
 /// Parses iterators of safflower tokens.
-pub struct Parser {
+pub struct Parser<I: Iterator<Item = Result<Token, ReadError>>> {
+    tokens: I,
+    buffer: Option<Token>,
+
     config: Configuration,
     keys: Vec<TempKey>,
 
-    working_comment: Option<String>,
-    working_key: Option<TempKey>,
+    comment: Option<String>,
 }
-impl Parser {
-    /// Parses a token iterator.
+impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
+    pub fn new(tokens: I) -> Self {
+        Self {
+            tokens,
+            buffer: None,
+
+            config: Configuration::default(),
+            keys: vec![],
+            
+            comment: None,
+        }
+    }
+
+    /// Parses all tokens and returns the parsed data.
     /// 
     /// # Errors 
     /// If something is unparsable.
-    pub fn parse(
-        &mut self, 
-        tokens: impl Iterator<Item = Result<Token, ReadError>>,
-    ) -> Result<(), Error> {
-        let mut locale = None;
-
-        let mut locale_style = None;
-
-        for token in tokens { match token? {
-            Token::Config(c) => {
-                self.config.parse_config(&c)?;
-
-                // Check if it was locales
-                if c.starts_with("locales") {
-                    locale_style = Some(self.config.locales.len());
-                }
-            },
-
-            // This will get put on whatever is next
-            Token::Comment(c) => self.working_comment = Some(c),
-
-            Token::Key(k) => self.parse_key(locale_style, k)?,
+    pub fn parse(mut self) -> Result<ParsedData, Error> {
+        loop {
+            let token = match self.buffer.take() {
+                Some(t) => Some(t),
+                None => self.tokens.next().transpose()?,
+            };
             
-            Token::Locale(l) => self.parse_locale(&mut locale, l)?,
-
-            Token::Value(v) => self.parse_value(
-                locale, 
-                locale_style, 
-                v,
-            )?,
-        }}
-
-        // Push the last dangling key
-        if let Some(key) = self.working_key.take() { self.add_key(key)?; }
-        
-        Ok(())
-    }
-
-    fn parse_locale(
-        &self, 
-        locale: &mut Option<usize>, 
-        id: Name,
-    ) -> Result<(), ParseError> {
-        if self.working_key.is_none() { return Err(ParseError::LocaleNoKey); }
-        
-        *locale = Some(
-            self.config
-            .find_locale(&id)
-            .ok_or_else(|| ParseError::UndeclaredLocale(id.into()))?
-        );
-
-        Ok(())
-    }
-    
-    fn parse_key(
-        &mut self, 
-        locale_style: Option<usize>, 
-        id: Name,
-    ) -> Result<(), ParseError> {
-        if let Some(old_key) = self.working_key.take() { 
-            self.add_key(old_key)?; 
-        }
-        let locale_count = locale_style.map_or(1, |c| c);
-        
-        let comment = self.working_comment.take();
-
-        self.working_key = Some(TempKey {
-            id,
-            comment,
-            entries: vec![None; locale_count],
-        });
-        Ok(())
-    }
-
-    fn add_key(&mut self, key: TempKey) -> Result<(), ParseError> {
-        if self.keys.iter().any(|k| k.id == key.id) {
-            return Err(ParseError::DuplicateKey(key.id.into()));
-        }
-        self.keys.push(key);
-        Ok(())
-    }
-
-    fn parse_value(
-        &mut self,
-        locale: Option<usize>, 
-        locale_style: Option<usize>, 
-        v: String,
-    ) -> Result<(), ParseError> {
-        let Some(key) = &mut self.working_key else { 
-            return Err(ParseError::ValueNoKey) 
-        };
-
-        let index = match locale_style {
-            None => 0,
-            Some(_) => locale.ok_or_else(|| 
-                ParseError::UsingDefaultLocale(
-                    key.id.to_str().to_string(),
-                    shorten(&v),
-                )
-            )?,
-        };
-
-        if key.entries[index].is_some() {
-            let locale = self.config.locales[index].clone();
-            return Err(ParseError::DuplicateEntry(
-                locale.into(),
-                key.id.to_str().to_string(),
-            ));
+            match token {
+                Some(t) => self.parse_token(t)?,
+                None => break,
+            }
         }
 
-        let comment = self.working_comment.take();
-
-        key.entries[index] = Some(Entry {
-            value: v,
-            comment,
-        });
-        
-        Ok(())
-    }
-    
-    /// Collects all the parsed data.
-    /// 
-    /// # Errors
-    /// If any key fails to be validated.
-    pub fn collect(self) -> Result<ParsedData, ParseError> {
         let Self {
-            config: head,
-            keys,
+            config,
+            keys, 
             ..
         } = self;
 
         let keys = keys
         .into_iter()
-        .map(|key| key.validate(&head.locales))
+        .map(|key| key.validate(&config.locales))
         .collect::<Result<_, ParseError>>()?;
 
-        let locales = head.locales;
+        let locales = config.locales;
 
         Ok(ParsedData {
             locales,
             keys,
         })
+    }
+
+    fn parse_token(&mut self, token: Token) -> Result<(), Error> {
+        // The are only a few valid token sequences:
+        // 1) !config values
+        // 2) key: (locale "value")+
+        // 3) #comment (2)
+        match token {
+            Token::Config(c) => {
+                self.config.parse_config(&c)?;
+                // In case a comment was read before, it should be removed
+                self.comment = None;
+            },
+
+            // Buffer a comment
+            Token::Comment(c) => self.comment = Some(c),
+
+            // Read a key (and the following locales and values)
+            Token::Key(id) => self.parse_key(id)?,
+
+            // We can't start a line with a locale or value
+            t => Err(ParseError::UnexpectedToken(t))?,
+        }
+
+        Ok(())
+    }
+
+    fn parse_key(&mut self, id: Name) -> Result<(), Error> {
+        // We have a key, so we must now get all the locale-value pairs
+        let mut entries = vec![None; self.config.locale_count()];
+        let mut did_something = false;
+
+        let comment = self.comment.take();
+        loop {
+            let Some(locale) = self.get_locale()? else { break; };
+            let index = self.config
+            .find_locale(&locale)
+            .ok_or_else(|| ParseError::UndeclaredLocale(locale.into()))?;
+
+            let Some(value) = self.get_value()? else { break; };
+            let comment = self.comment.take();
+
+            entries[index] = Some(Entry { value, comment });
+            did_something = true;
+        }
+
+        if !did_something {
+            return Err(ParseError::ExpectedLocale.into());
+        }
+
+        let key = TempKey {
+            id,
+            comment,
+            entries,
+        };
+
+        self.add_key(key).map_err(Into::into)
+    }
+
+    fn get_locale(&mut self) -> Result<Option<Name>, Error> {
+        for t in self.tokens.by_ref() {
+            match t? {
+                Token::Comment(c) => self.comment = Some(c),
+                Token::Locale(id) => return Ok(Some(id)),
+
+                // We expect key - loc - val - loc - val ...
+                // until there is a key again
+                Token::Key(id) => { 
+                    self.buffer = Some(Token::Key(id)); 
+                    return Ok(None);
+                }
+
+                t => Err(ParseError::UnexpectedToken(t))?,
+            }
+        }
+        Ok(None)
+    }
+
+    fn get_value(&mut self) -> Result<Option<String>, Error> {
+        for t in self.tokens.by_ref() {
+            match t? {
+                Token::Comment(c) => self.comment = Some(c),
+                Token::Value(value) => return Ok(Some(value)),
+
+                t => Err(ParseError::UnexpectedToken(t))?,
+            }
+        }
+        Err(ParseError::ExpectedValue)?
+    }
+
+    fn add_key(&mut self, key: TempKey) -> Result<(), ParseError> {
+        // Check if an old key matches the new one
+        if let Some(old_key) = self.keys.iter_mut().find(|k| k.id == key.id) {
+            let TempKey { id, comment, entries } = key;
+
+            // If no entries overlap, it's ok, otherwise it's an error
+            for (i, e) in entries.into_iter().enumerate() {
+                if e.is_none() { continue; }
+
+                if old_key.entries[i].is_some() {
+                    return Err(ParseError::DuplicateEntry(
+                        id.into(),
+                        self.config.locales[i].to_str().into(),
+                    ));
+                }
+
+                old_key.entries[i] = e;
+            }
+
+            // Join the comments as well
+            old_key.comment = match (old_key.comment.take(), comment) {
+                (None, None) => None,
+                (None, Some(c)) | (Some(c), None) => Some(c),
+                (Some(c1), Some(c2)) => Some(c1 + &c2),
+            };
+
+            return Ok(());
+        }
+
+        self.keys.push(key);
+
+        Ok(())
     }
 }
 
@@ -312,7 +335,7 @@ fn get_entries(
     entries
     .into_iter()
     .enumerate()
-    .map(|(i, e)| e.ok_or_else(|| ParseError::MissingLocale(
+    .map(|(i, e)| e.ok_or_else(|| ParseError::EntryMissingLocale(
         shorten(id),
         locales[i].to_str().to_string()
     )))

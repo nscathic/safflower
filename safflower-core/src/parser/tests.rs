@@ -2,9 +2,11 @@ use crate::{name::Name, reader::Token};
 use super::*;
 
 fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Key>, Error> {
-    let mut parser = Parser::default();
-    parser.parse(tokens.into_iter().map(Ok))?;
-    parser.collect().map(|pd| pd.keys).map_err(Into::into)
+    Parser::new(
+        tokens.into_iter().map(Ok)
+    )
+    .parse()
+    .map(|pd| pd.keys)
 }
 
 fn name(str: &str) -> Name { Name::try_from(str).unwrap() }
@@ -290,4 +292,49 @@ fn parse_mutliple_arguments() {
         let result = extract_arguments(line).unwrap();
         assert_eq!(result, arg);
     }
+}
+
+#[test] 
+fn separate_key() {
+    let tokens = vec![
+        Token::Config(String::from("locales a b")),
+        Token::Key(name("key")),
+        Token::Locale(name("a")),
+        Token::Value(String::from("value A")),
+        Token::Key(name("key2")),
+        Token::Locale(name("a")),
+        Token::Value(String::from("value A")),
+        Token::Key(name("key")),
+        Token::Locale(name("b")),
+        Token::Value(String::from("value B")),
+        Token::Key(name("key2")),
+        Token::Locale(name("b")),
+        Token::Value(String::from("value B")),
+    ];
+
+    let keys = parse_tokens(tokens).expect("should be ok");
+
+    assert_eq!(
+        keys,
+        vec![
+            Key { 
+                id: name("key"), 
+                arguments: vec![],
+                comment: None, 
+                entries: vec![
+                    String::from("value A"),
+                    String::from("value B"), 
+                ] 
+            }, 
+            Key { 
+                id: name("key2"), 
+                arguments: vec![],
+                comment: None, 
+                entries: vec![
+                    String::from("value A"),
+                    String::from("value B"), 
+                ] 
+            }
+        ]
+    );
 }

@@ -52,4 +52,8 @@ impl Configuration {
 
         Ok(())
     }
+    
+    pub const fn locale_count(&self) -> usize {
+        self.locales.len()
+    }
 }
