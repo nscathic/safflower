@@ -66,8 +66,20 @@ name = "safflower"
 version = "0.3.0"
 dependencies = [
  "quote",
- "safflower-core 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "safflower-macro 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "safflower-core 0.2.1",
+ "safflower-macro 0.2.1",
+]
+
+[[package]]
+name = "safflower-core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d20059863014169ed46881e0a6fd02e6a204c452c3c05b089e11500cc8c8b92f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "thiserror",
 ]
 
 [[package]]
@@ -96,18 +108,18 @@ dependencies = [
 [[package]]
 name = "safflower-macro"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77813d77f35bf8178724fb7456bac39b33908bf606d4bcbb9003c24a342a4b19"
 dependencies = [
  "proc-macro2",
  "quote",
- "safflower-core 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "safflower-core 0.2.1",
  "syn",
 ]
 
 [[package]]
 name = "safflower-macro"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77813d77f35bf8178724fb7456bac39b33908bf606d4bcbb9003c24a342a4b19"
 dependencies = [
  "proc-macro2",
  "quote",
