@@ -1,7 +1,7 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 
-use crate::{LOCALE_FAILURE_MESSAGE, error::ParseError, parser::{Key, Head}, shorten, validate_char};
+use crate::{LOCALE_FAILURE_MESSAGE, name::Name, parser::Key};
 
 #[cfg(test)]
 mod tests;
@@ -14,28 +14,14 @@ pub struct Generator {
 impl Generator {
     #[must_use] 
     /// Sets itself up.
-    pub fn new(head: Head, keys: Vec<Key>) -> Self {
-        let locales = head.locales()
+    pub fn new(locales: Vec<Name>, keys: Vec<Key>) -> Self {
+        let locales = locales
         .into_iter()
-        // Map e.g. "en_us" to "EnUs"
-        // There is some trust in myself here that locales only ever contain
-        // lowercase letters and '_'.
-        .map(|l| {
-            let id = l
-            .split('_')
-            .filter_map(|p| {
-                // Capitalise first letter
-                let mut cs = p.chars();
-                cs.next().map(|c| 
-                    String::from(c.to_ascii_uppercase()) 
-                    + &cs.collect::<String>()
-                )
-            })
-            .collect::<String>();
-
-            (syn::Ident::new(&id, Span::call_site()), l.to_ascii_uppercase())
-        })
-        .collect::<Vec<_>>();
+        .map(|loc| (
+            syn::Ident::new(&loc.type_name(), Span::call_site()),
+            loc.into(), 
+        ))
+        .collect();
 
         Self { 
             locales, 
@@ -43,83 +29,69 @@ impl Generator {
         }
     }
 
+    #[must_use]
     /// Generates code.
     /// 
     /// # Errors
     /// If there are no defined locales.
-    pub fn generate(mut self) -> Result<TokenStream, ParseError> {
-        let locales = self.generate_enum()?;
+    pub fn generate(mut self) -> TokenStream {
+        let locales = self.generate_enum();
         let getter = Self::generate_getter();
         let setter = Self::generate_setter();
         
         let keys = std::mem::take(&mut self.keys)
         .into_iter()
         .map(|key| self.generate_from_key(key))
-        .collect::<Result<Vec<_>, ParseError>>()?;
+        .collect::<Vec<_>>();
 
-        let code = quote! {
+        quote! {
             #locales
             #getter
             #setter
             #(#keys)*
-        }.into_token_stream();
-
-        Ok(code)
+        }.into_token_stream()
     }
     
     /// Generates an enum of locales, and a static var to keep it.
-    fn generate_enum(&self) -> Result<TokenStream, ParseError> {
-        if self.locales.is_empty() {return Err(ParseError::NoLocales); }
-
+    fn generate_enum(&self) -> TokenStream {
         let locales = self.locales.iter().map(|(i, _)| i).collect::<Vec<_>>();
         let default = locales[0];
         let count = self.locales.len();
 
-        // quote! {
-        //     /// The locales available.
-        //     #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-        //     pub enum Locale {
-        //         #(#locales,)*
-        //     }
+        let enum_comment = comment("The locales available.");
+        let const_comment = comment("All locales, in the order they were \
+            declared.");
+        let locale_comment = comment("The current locale.");
 
-        //     /// All locales, in the order they were declared.
-        //     pub const LOCALES: [Locale; #count] = [
-        //         #(Locale::#locales,)*
-        //     ];
-
-        //     /// The current locale.
-        //     pub static LOCALE: std::sync::Mutex<Locale> = 
-        //         std::sync::Mutex::new(Locale::#default);
-        // }.into_token_stream()
-
-        let code = quote! {
+        quote! {
+            #enum_comment
             #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
             pub enum Locale {
                 #(#locales,)*
             }
 
+            #const_comment
             pub const LOCALES: [Locale; #count] = [
                 #(Locale::#locales,)*
             ];
 
+            #locale_comment
             pub static LOCALE: std::sync::Mutex<Locale> = 
                 std::sync::Mutex::new(Locale::#default);
-        }.into_token_stream();
-
-        Ok(code)
+        }.into_token_stream()
     }
 
     /// Generates a function to get the current locale.
     fn generate_getter() -> TokenStream {
-        /*
-            /// Gets the current locale. As this calls `Mutex::lock()`, it will
-            /// block the thread until it is safe to access. 
-            /// 
-            /// # Panic 
-            /// It will panic if the `Mutex` has been poisoned. See 
-            /// [`std::sync::Mutex`].
-        */          
+        let comment = comment("\
+            Returns the current locale. As this calls `Mutex::lock()`, it \
+            will block the thread until it is safe to access. \n\n\
+            # Panic \n\
+            It will panic if the `Mutex` has been poisoned. See \
+            [`std::sync::Mutex`].");
+
         quote! {
+            #comment
             pub fn get_locale() -> Locale {
                 *LOCALE
                 .lock()
@@ -130,7 +102,15 @@ impl Generator {
 
     /// Generates a function to set the current locale.
     fn generate_setter() -> TokenStream {
+        let comment = comment("\
+            Sets the current locale. As this calls `Mutex::lock()`, it will \
+            block the thread until it is safe to access. \n\n\
+            # Panic \n\
+            It will panic if the `Mutex` has been poisoned. See \
+            [`std::sync::Mutex`].");
+
         quote! {
+            #comment
             pub fn set_locale(locale: Locale) {
                 *LOCALE
                 .lock()
@@ -140,21 +120,8 @@ impl Generator {
         }.into_token_stream()
     }
 
-    fn generate_from_key(&self, key: Key) -> Result<TokenStream, ParseError> {
-        let Key { id, comment, entries } = key;
-
-        let arguments = get_arguments(&entries[0])?;
-        
-        for (i, e) in entries.iter().enumerate().skip(1) {
-            let a = get_arguments(e)?;
-            assert!(
-                a == arguments,
-                "in key \"{id}\", entry {} has arguments {a:?}, but entry \
-                {} has arguments {arguments:?}",
-                self.locales[0].1,
-                self.locales[i].1,
-            );
-        }
+    fn generate_from_key(&self, key: Key) -> TokenStream {
+        let Key { id, arguments, comment, entries } = key;
 
         // All go to params, but only positinal go to arguments
         let (positional, named): (Vec<_>, Vec<_>) = arguments
@@ -173,7 +140,7 @@ impl Generator {
         let arguments = positional.clone().collect::<Vec<_>>();
         let params = named.chain(positional);
 
-        let id = syn::Ident::new(&id, Span::call_site());
+        let id = syn::Ident::new(id.to_str(), Span::call_site());
         let comment = comment.map(|c| quote! {#[doc = #c]});
 
         let entries = entries
@@ -186,7 +153,7 @@ impl Generator {
             }
         });
 
-        let code = quote! {
+        quote! {
             #comment
             pub fn #id(
                 locale: Locale,
@@ -196,64 +163,14 @@ impl Generator {
                     #(#entries,)*
                 }
             }
-        };
-
-        Ok(code)
+        }
     }
 }
 
-fn get_arguments(key: &str) -> Result<Vec<String>, ParseError> {
-    let mut arguments = Vec::new();
-    let mut argument = String::new();
-    let mut opened = false;
-    let mut unnamed_indexer = 0;
-    let mut formatting = false;
-
-    for c in key.chars() {
-        match c {
-            '{' if opened => return Err(ParseError::NestedBrace),
-            '{' => { opened = true; },
-
-            '}' if !opened => return Err(ParseError::ExtraClosingBrace),
-            '}' => {
-                if argument.is_empty() {
-                    argument = format!("{unnamed_indexer}");
-                    unnamed_indexer += 1;
-                }
-                else if !argument.starts_with(
-                    |c: char| c.is_ascii_alphabetic()
-                ) && !argument.chars().all(char::is_numeric)  {
-                    return Err(ParseError::ArgBadStart(
-                        key.to_string(), 
-                        shorten(&argument), 
-                        c,
-                    ))
-                }
-
-                if !arguments.contains(&argument) {                        
-                    arguments.push(argument);
-                }
-
-                argument = String::new();
-                opened = false;
-                formatting = false;
-            }
-
-            ':' if opened => formatting = true,
-
-            // Don't copy the formatting part
-            c if opened && !formatting => argument.push(
-                validate_char(c)
-                .map_err(|c| ParseError::ArgBadChar(
-                    shorten(key), 
-                    shorten(&argument),
-                    c,
-                ))?
-            ),
-            
-            _ => (),
-        }
+fn comment(text: &str) -> Option<TokenStream> {
+    if cfg!(test) {
+        None
+    } else {
+        Some(quote!{#[doc = #text]})
     }
-
-    Ok(arguments) 
 }
