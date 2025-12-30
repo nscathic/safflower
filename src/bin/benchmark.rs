@@ -1,7 +1,12 @@
 use safflower::{load, text};
+// use safflower_core as core;
+
+fn main() {
+    loading_formatting_noargs();
+}
 
 #[allow(clippy::useless_format)]
-fn main() {
+fn loading_formatting_noargs() {
     load!("src/bin/lorem256_1024.txt");
     
     let n = 1_000_000;
@@ -26,8 +31,9 @@ fn main() {
 
     println!(
         "{n} format!s took {:.2} µs\n\
-         {n} text!s   took {:.2} µs",
+         {n} text!s   took {:.2} µs = {:.1} %",
         time_format.as_secs_f32()*1000.0,
         time_text.as_secs_f32()*1000.0,
+        time_text.as_secs_f32() / time_format.as_secs_f32() * 100.
     );
 }
