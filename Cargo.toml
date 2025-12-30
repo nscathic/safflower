@@ -1,6 +1,6 @@
 [package]
 name = "safflower"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 authors = ["nscathic"]
 license = "MIT"
@@ -12,9 +12,9 @@ categories = ["internationalization", "localization"]
 exclude = ["src/bin"]
 
 [dependencies]
-safflower-core  = "0.2.1"
+safflower-core  = "0.3.0"
 # safflower-core  = {path = "./safflower-core"}
-safflower-macro = "0.2.1"
+safflower-macro = "0.3.0"
 # safflower-macro = {path = "./safflower-macro"}
 
 [workspace]
