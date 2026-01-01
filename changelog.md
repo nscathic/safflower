@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] 2026-01-01
 ### Added
-- `!include` config line to inlcude more files for parsing. Paths are relative to parent file.
+- `!include` config line to include more files for parsing. Paths are relative to parent file.
 
 ## [0.3.0] 2025-12-30
 ### Added 

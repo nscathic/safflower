@@ -33,8 +33,10 @@ impl Configuration {
         let values = parts.collect::<Vec<_>>();
 
         match key {
-            "locales" => self.set_locales(values)?,
-            "inlcude" => self.queue_path(values),
+            "locales" => self.locales(values)?,
+            "include" => self.include(values),
+            
+
             k => return Err(Error::Parse(
                 self.current_path.clone(),
                 ParseError::ConfigUnknownKey(k.to_string()),
@@ -52,10 +54,7 @@ impl Configuration {
     
     /// # Errors
     /// Not having any locales, or inserting the same value twice.
-    pub fn set_locales(
-        &mut self, 
-        parts: Vec<&str>,
-    ) -> Result<(), Error> {
+    pub fn locales(&mut self, parts: Vec<&str>) -> Result<(), Error> {
         if parts.is_empty() { 
             return Err(Error::Parse(
                 self.current_path.clone(),
@@ -82,7 +81,7 @@ impl Configuration {
     /// The number of locales declared.
     pub const fn locale_count(&self) -> usize { self.locales.len() }
     
-    fn queue_path(&mut self, values: Vec<&str>) {
+    fn include(&mut self, values: Vec<&str>) {
         let parent = self.current_path.parent();
         let new_paths = values
         .into_iter()
