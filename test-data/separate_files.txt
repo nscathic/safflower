@@ -1,0 +1,3 @@
+!locales a b
+!inlcude separation/file_a.txt
+!inlcude separation/file_b.txt

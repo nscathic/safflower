@@ -1,10 +1,8 @@
 use crate::{name::Name, reader::Token};
 use super::*;
 
-fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Key>, Error> {
-    Parser::new(
-        tokens.into_iter().map(Ok)
-    )
+fn parse(tokens: Vec<Token>) -> Result<Vec<Key>, Error> {
+    Parser::from_vec(tokens)
     .parse()
     .map(|pd| pd.keys)
 }
@@ -34,7 +32,7 @@ fn bad_locales() {
     ];
 
     for input in ins {
-        let mut configuration = Configuration::default();
+        let mut configuration = Configuration::new(PathBuf::new());
         let result = configuration.parse_config(input);
 
         assert!(result.is_err(), "'{input}' should be err");
@@ -55,7 +53,7 @@ fn ok_locales() {
     ];
 
     for (input, output) in ins_outs {
-        let mut configuration = Configuration::default();
+        let mut configuration = Configuration::new(PathBuf::new());
         let result = configuration.parse_config(input);
 
         assert!(result.is_ok(), "'{input}' should be ok; got {result:?}");
@@ -72,7 +70,7 @@ fn minimal_case() {
         Token::Value(String::from("value")),
     ];
 
-    let keys = parse_tokens(tokens)
+    let keys = parse(tokens)
     .expect("should be ok");
 
     assert_eq!(
@@ -98,7 +96,7 @@ fn key_comment() {
         Token::Value(String::from("value")),
     ];
 
-    let keys = parse_tokens(tokens)
+    let keys = parse(tokens)
     .expect("should be ok");
 
     assert_eq!(
@@ -124,7 +122,7 @@ fn entry_comments() {
         Token::Value(String::from("value")),
     ];
 
-    let keys_1 = parse_tokens(tokens)
+    let keys_1 = parse(tokens)
     .expect("should be ok");
 
     let tokens = vec![
@@ -135,7 +133,7 @@ fn entry_comments() {
         Token::Value(String::from("value")),
     ];
 
-    let keys_2 = parse_tokens(tokens)
+    let keys_2 = parse(tokens)
     .expect("should be ok");
 
     assert_eq!(keys_1, keys_2);
@@ -164,7 +162,7 @@ fn mutli_locales() {
         Token::Value(String::from("value B")),
     ];
 
-    let keys = parse_tokens(tokens)
+    let keys = parse(tokens)
     .expect("should be ok");
 
     assert_eq!(
@@ -193,7 +191,7 @@ fn missing_locales() {
         Token::Value(String::from("value B")),
     ];
 
-    assert!(parse_tokens(tokens).is_err());
+    assert!(parse(tokens).is_err());
 }
 
 #[test] 
@@ -205,7 +203,7 @@ fn missing_declared_locale() {
         Token::Value(String::from("value A")),
     ];
 
-    assert!(parse_tokens(tokens).is_err());
+    assert!(parse(tokens).is_err());
 }
 
 #[test] 
@@ -218,7 +216,7 @@ fn using_declared_default() {
         Token::Value(String::from("value B")),
     ];
 
-    assert!(parse_tokens(tokens).is_err());
+    assert!(parse(tokens).is_err());
 }
 
 #[test] 
@@ -229,7 +227,7 @@ fn using_and_not_default() {
         Token::Value(String::from("value B")),
     ];
 
-    assert!(parse_tokens(tokens).is_err());
+    assert!(parse(tokens).is_err());
 
     let tokens = vec![
         Token::Config(String::from("locales b")),
@@ -238,7 +236,7 @@ fn using_and_not_default() {
         Token::Value(String::from("value B")),
     ];
 
-    assert!(parse_tokens(tokens).is_ok());
+    assert!(parse(tokens).is_ok());
 }
 
 #[test]
@@ -312,7 +310,7 @@ fn separate_key() {
         Token::Value(String::from("value B")),
     ];
 
-    let keys = parse_tokens(tokens).expect("should be ok");
+    let keys = parse(tokens).expect("should be ok");
 
     assert_eq!(
         keys,

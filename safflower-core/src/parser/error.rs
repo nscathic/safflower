@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use thiserror::Error;
 
 use crate::reader::Token;
@@ -10,6 +11,8 @@ pub enum ParseError {
     ConfigUnknownKey(String),
     #[error("missing values for config \"{0}\"")]
     ConfigMissingValues(&'static str),
+    #[error("file \"{0}\" is included more than once")]
+    ConfigDuplicateFile(PathBuf),
     
     #[error("duplicate locale \"{0}\"")]
     DuplicateLocale(String),

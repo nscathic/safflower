@@ -1,0 +1,6 @@
+!locales a b
+key1: a "A"
+# here we split it up
+key2: a "A" b "B"
+# and here rejoin
+key1: b "B"

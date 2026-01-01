@@ -1,46 +1,36 @@
-use std::{fs::File, io::Read};
-
 use quote::quote;
 use safflower_core::{
     generator::Generator, 
     name::Name, 
     parser::{Key, ParsedData, Parser}, 
-    reader::CharReader,
 };
 
 pub struct Loader {
     span: proc_macro2::Span,
-    source: String,
+    path: String,
 }
 impl syn::parse::Parse for Loader {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // Get a path
         let path: syn::LitStr = input.parse()?;
 
-        // Get the contents
-        let mut source = String::new();
-        File::open(path.value())
-        .map_err(|e| syn::Error::new(path.span(), e))?
-        .read_to_string(&mut source)
-        .map_err(|e| syn::Error::new(path.span(), e.to_string()))?;
-
         Ok(Self { 
             span: path.span(),
-            source,
+            path: path.value(),
         })
     }
 }
 impl Loader {
     pub fn collect(self) -> syn::Result<LoadedData> {
-        let reader = CharReader::new(&self.source);
-        let parsed = Parser::new(reader)
-        .parse()
-        .map_err(|e| syn::Error::new(
-            self.span, 
-            format!("error while parsing: {e}"), 
-        ))?;
+        let parsed = Parser::new(self.path).map(Parser::parse);
 
-        let ParsedData { locales, keys } = parsed;
+        let ParsedData { locales, keys } = match parsed {
+            Ok(Ok(pd)) => pd,
+            Ok(Err(e)) | Err(e) => return Err(syn::Error::new(
+                self.span, 
+                e, 
+            )),
+        };
 
         Ok(LoadedData {
             locales,

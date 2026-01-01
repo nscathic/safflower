@@ -1,0 +1,3 @@
+!locales b
+key1: b "B"
+key2: b "B" 
