@@ -32,7 +32,7 @@ This also means that the text getting functions are *thread blocking*, but only 
 
 >***Note***
 >
->In a small benchmark on an old laptop, one million calls to `text!` for a 256-byte string took about ~230 ms, whereas one million calls to `format!` for the same text took about ~120 ms. 
+>In a small benchmark on an old laptop, one million calls to `text!` for a 256-byte string took about ~110 ms, whereas one million calls to `format!` for the same text took about ~65 ms. 
 
 ### File structure
 The file structure is designed to attempt to find a balance between ease-of-use and ease-of-parsing (which affects compile time). A minimal example:

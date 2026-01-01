@@ -30,8 +30,8 @@ fn loading_formatting_noargs() {
     let time_text = t0.elapsed();
 
     println!(
-        "{n} format!s took {:.2} µs\n\
-         {n} text!s   took {:.2} µs = {:.1} %",
+        "{n} format!s took {:.2} ms\n\
+         {n} text!s   took {:.2} ms = {:.1} %",
         time_format.as_secs_f32()*1000.0,
         time_text.as_secs_f32()*1000.0,
         time_text.as_secs_f32() / time_format.as_secs_f32() * 100.
