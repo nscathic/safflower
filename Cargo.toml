@@ -12,9 +12,9 @@ categories = ["internationalization", "localization"]
 exclude = ["src/bin"]
 
 [dependencies]
-safflower-core  = "0.4.0"
+safflower-core  = "0.4.1"
 # safflower-core  = {path = "./safflower-core"}
-safflower-macro = "0.4.0"
+safflower-macro = "0.4.1"
 # safflower-macro = {path = "./safflower-macro"}
 
 [workspace]

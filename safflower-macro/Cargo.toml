@@ -1,6 +1,6 @@
 [package]
 name = "safflower-macro"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 authors = ["nscathic"]
 license = "MIT"
@@ -12,7 +12,7 @@ categories = ["internationalization", "localization"]
 
 [dependencies]
 # safflower-core  = {path = "../safflower-core"}
-safflower-core = "0.4.0"
+safflower-core = "0.4.1"
 proc-macro2 = "1.0.103"
 quote = "1.0.42"
 syn = "2.0.111"
