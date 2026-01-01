@@ -30,7 +30,7 @@ I'm not a fan of global variables, but I think this makes sense here: we don't e
 
 This also means that the text getting functions are *thread blocking*, but only for the short while it takes to access it -- `Locale` implements `Copy` to minimise fuzz. If someone has a better solution, feel free to say so.
 
->*Note*
+>***Note***
 >
 >In a small benchmark on an old laptop, one million calls to `text!` for a 256-byte string took about ~230 ms, whereas one million calls to `format!` for the same text took about ~120 ms. 
 
@@ -55,7 +55,11 @@ There are two exceptions:
 2) comments are not parsed inside values.
 
 #### Config
-The file must contain a config line `!locales` followed by all the localed to be used, on the same line. This must occur before any text entries.
+A config line is a `!` followed y a key and one or more values, all on the same line. 
+
+There are currently two config keys:
+- `!locales` is used to declare locales, separated by whitespace. This must occur before any text entries using them.
+- `!include` appends one or more files' contents to be parsed, in the order read
 
 #### Entries
 The rest of the file must contain entries, each is a key followed by a colon `:` and at least one pair of a locale and a quote-enclosed value. 
@@ -65,7 +69,9 @@ Keys and locales must both start with an ASCII alphabetical character and only c
 #### Values and formatting
 A value may contain any valid UTF-8. Quotes and curly braces may be escaped with a backslash `\`. The strings are passed wholesale to `format!`, and so any regular formatting will work, e.g. `"Hello {name}, I'm {dist:.2} light-years away."`.
 
-You may even use unnamed parameters like `{0}` or `{}`, but as they need a proper name to be passed into functions, they will be renamed to `arg0` etc. This means that using both `{0}` and `arg0` will create overlap. I don't foresee this being a problem for anyone, though.
+> ***Note***
+>
+> You may use unnamed parameters like `{0}` or `{}`, but as they need proper names to be passed into functions, they will be renamed to `arg0` etc. This means that using both `{0}` and `arg0` will create overlap. I don't foresee this being a problem for anyone, though.
 
 ## Accessing text
 The `text!` macro is designed to fit in as a replacement for `format!`, where the string literal is replaced by a key from the loaded file. It matches on the locale to choose which localised text to format, inserting arguments as `format!` would.

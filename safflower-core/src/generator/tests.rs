@@ -1,6 +1,6 @@
 use std::vec;
 
-use crate::{LOCALE_FAILURE_MESSAGE, parser::Parser, reader::CharReader};
+use crate::{LOCALE_FAILURE_MESSAGE, parser::Parser};
 
 use super::*;
 
@@ -399,9 +399,7 @@ fn multi_from_text() {
             en \"hello\"
             gr \"καλημέρα\"
     ";
-    let reader = CharReader::new(source);
-    
-    let parsed = Parser::new(reader).parse().unwrap();
+    let parsed = Parser::from_str(source).parse().unwrap();
 
     let generator = Generator::new(parsed.locales, parsed.keys);
     let actual = generator.generate();

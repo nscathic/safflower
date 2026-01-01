@@ -1,5 +1,7 @@
+use std::path::{Path, PathBuf};
+
 use crate::{
-    error::Error, name::Name, reader::{ReadError, Token}, shorten
+    error::Error, name::Name, reader::{CharReader, ReadError, Token}, shorten
 };
 
 mod error;
@@ -11,26 +13,102 @@ use config::Configuration;
 mod tests;
 
 /// Parses iterators of safflower tokens.
-pub struct Parser<I: Iterator<Item = Result<Token, ReadError>>> {
-    tokens: I,
+pub struct Parser {
+    tokens: Box<dyn Iterator<Item = Result<Token, ReadError>>>,
     buffer: Option<Token>,
+
+    read_paths: Vec<PathBuf>,
 
     config: Configuration,
     keys: Vec<TempKey>,
 
     comment: Option<String>,
 }
-impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
-    pub fn new(tokens: I) -> Self {
+impl Parser {
+    /// Creates a parser to read from a file path.
+    /// 
+    /// # Errors 
+    /// If there is a problem reading the file as UTF-8.
+    pub fn new(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let source = std::fs::read_to_string(&path)
+        .map_err(|e| Error::Io(path.as_ref().into(), e))?;
+
+        let tokens = Box::new(CharReader::new(&source));
+        let read_paths = vec![path.as_ref().into()];
+
+        Ok(Self {
+            tokens,
+            buffer: None,
+
+            read_paths,
+
+            config: Configuration::new(path.as_ref().into()),
+            keys: vec![],
+            
+            comment: None,
+        })
+    }
+
+    #[cfg(test)]
+    pub fn from_str(text: &str) -> Self {
+        let tokens = Box::new(CharReader::new(text));
+
         Self {
             tokens,
             buffer: None,
 
-            config: Configuration::default(),
+            read_paths: vec![],
+
+            config: Configuration::new(PathBuf::from("string")),
             keys: vec![],
             
             comment: None,
         }
+    }
+
+    #[cfg(test)]
+    pub fn from_vec(source: Vec<Token>) -> Self {
+        let tokens = Box::new(
+            source
+            .into_iter()
+            .map(Ok)
+            .collect::<Vec<_>>()
+            .into_iter()
+        );
+
+        Self {
+            tokens,
+            buffer: None,
+
+            read_paths: vec![],
+
+            config: Configuration::new(PathBuf::from("vec")),
+            keys: vec![],
+            
+            comment: None,
+        }
+    }  
+
+    fn refill_tokens(&mut self) -> Result<bool, Error> {
+        let Some(path) = self.config.pop_path() else { return Ok(false); };
+
+        if self.read_paths.contains(&path) {
+            return Err(self.contextualise(
+                ParseError::ConfigDuplicateFile(path)
+            ));
+        }
+
+        let source = std::fs::read_to_string(&path)
+        .map_err(|e| Error::Io(
+            self.config.current_path.clone(),
+            e,
+        ))?;
+        
+        self.read_paths.push(path);
+
+        self.tokens = Box::new(CharReader::new(&source));
+
+        Ok(true)
     }
 
     /// Parses all tokens and returns the parsed data.
@@ -46,22 +124,19 @@ impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
             
             match token {
                 Some(t) => self.parse_token(t)?,
-                None => break,
+                None => if !self.refill_tokens()? { break },
             }
         }
 
-        let Self {
-            config,
-            keys, 
-            ..
-        } = self;
+        let keys = std::mem::take(&mut self.keys);
 
         let keys = keys
         .into_iter()
-        .map(|key| key.validate(&config.locales))
-        .collect::<Result<_, ParseError>>()?;
+        .map(|key| key.validate(&self.config.locales))
+        .collect::<Result<_, ParseError>>()
+        .map_err(|e| self.contextualise(e))?;
 
-        let locales = config.locales;
+        let locales = self.config.locales;
 
         Ok(ParsedData {
             locales,
@@ -88,7 +163,9 @@ impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
             Token::Key(id) => self.parse_key(id)?,
 
             // We can't start a line with a locale or value
-            t => Err(ParseError::UnexpectedToken(t))?,
+            t => return Err(self.contextualise(
+                ParseError::UnexpectedToken(t)
+            )),
         }
 
         Ok(())
@@ -104,7 +181,9 @@ impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
             let Some(locale) = self.get_locale()? else { break; };
             let index = self.config
             .find_locale(&locale)
-            .ok_or_else(|| ParseError::UndeclaredLocale(locale.into()))?;
+            .ok_or_else(|| self.contextualise(
+                ParseError::UndeclaredLocale(locale.into())
+            ))?;
 
             let Some(value) = self.get_value()? else { break; };
             let comment = self.comment.take();
@@ -114,7 +193,7 @@ impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
         }
 
         if !did_something {
-            return Err(ParseError::ExpectedLocale.into());
+            return Err(self.contextualise(ParseError::ExpectedLocale));
         }
 
         let key = TempKey {
@@ -123,7 +202,7 @@ impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
             entries,
         };
 
-        self.add_key(key).map_err(Into::into)
+        self.add_key(key).map_err(|e| self.contextualise(e))
     }
 
     fn get_locale(&mut self) -> Result<Option<Name>, Error> {
@@ -139,7 +218,9 @@ impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
                     return Ok(None);
                 }
 
-                t => Err(ParseError::UnexpectedToken(t))?,
+                t => return Err(self.contextualise(
+                    ParseError::UnexpectedToken(t)
+                )),
             }
         }
         Ok(None)
@@ -151,16 +232,23 @@ impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
                 Token::Comment(c) => self.comment = Some(c),
                 Token::Value(value) => return Ok(Some(value)),
 
-                t => Err(ParseError::UnexpectedToken(t))?,
+                t => return Err(self.contextualise(
+                    ParseError::UnexpectedToken(t)
+                )),
             }
         }
-        Err(ParseError::ExpectedValue)?
+        Err(self.contextualise(ParseError::ExpectedValue))
     }
 
     fn add_key(&mut self, key: TempKey) -> Result<(), ParseError> {
         // Check if an old key matches the new one
         if let Some(old_key) = self.keys.iter_mut().find(|k| k.id == key.id) {
             let TempKey { id, comment, entries } = key;
+
+            if old_key.entries.len() < entries.len() {
+                let size_difference = entries.len() - old_key.entries.len();
+                old_key.entries.append(&mut vec![None; size_difference]);
+            }
 
             // If no entries overlap, it's ok, otherwise it's an error
             for (i, e) in entries.into_iter().enumerate() {
@@ -190,8 +278,16 @@ impl<I: Iterator<Item = Result<Token, ReadError>>> Parser<I> {
 
         Ok(())
     }
+
+    fn contextualise(&self, err: ParseError) -> Error {
+        Error::Parse(
+            self.config.current_path.clone(), 
+            err,    
+        )
+    }
 }
 
+#[derive(Debug)]
 /// The collected data once the parsing is finished.
 pub struct ParsedData {
     pub locales: Vec<Name>,
@@ -332,6 +428,13 @@ fn get_entries(
     id: &Name,
     locales: &[Name],
 ) -> Result<(Vec<String>, Vec<Option<String>>), ParseError> {
+    if entries.len() < locales.len() {
+        return Err(ParseError::EntryMissingLocale(
+            shorten(id), 
+            locales[entries.len()].to_string(),
+        ));
+    }
+
     entries
     .into_iter()
     .enumerate()

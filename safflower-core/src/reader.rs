@@ -1,4 +1,3 @@
-use std::str::Chars;
 use crate::name::Name;
 
 mod error;
@@ -8,15 +7,15 @@ pub use error::ReadError;
 mod tests;
 
 #[derive(Clone)]
-pub struct CharReader<'a> {
-    chars: Chars<'a>,
+pub struct CharReader {
+    chars: Vec<char>,
     buffer: Option<char>,
 }
-impl<'a> CharReader<'a> {
+impl CharReader {
     #[must_use]
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(source: &str) -> Self {
         Self {
-            chars: source.chars(),
+            chars: source.chars().rev().collect(),
             buffer: None,
         }
     }
@@ -24,7 +23,7 @@ impl<'a> CharReader<'a> {
     fn read_comment(&mut self) -> Token {
         let mut comment = String::new();
 
-        for c in self.chars.by_ref() {
+        while let Some(c) = self.chars.pop() {
             if c == '\n' { break; }
             comment += &c.to_string();
         }
@@ -36,7 +35,7 @@ impl<'a> CharReader<'a> {
         let mut line = String::new();
         let mut add = true;
 
-        for c in self.chars.by_ref() {
+        while let Some(c) = self.chars.pop() {
             if c == '\n' { break; }
             if c == '#' { add = false; }
  
@@ -48,7 +47,7 @@ impl<'a> CharReader<'a> {
     fn read_value(&mut self) -> Result<Token, ReadError> {
         let mut value = String::new();
         loop {
-            match self.chars.next() {
+            match self.chars.pop() {
                 Some('"') => if value.ends_with('\\') {
                     // Quote may be escaped...
                     _ = value.pop();
@@ -73,7 +72,7 @@ impl<'a> CharReader<'a> {
         let mut name = Name::new(first)?;
 
         // First we get the token
-        for char in self.chars.by_ref()  {
+        while let Some(char) = self.chars.pop() {
             match char {
                 c if c.is_whitespace() => break,
 
@@ -93,7 +92,7 @@ impl<'a> CharReader<'a> {
 
         // If we got here, there was a whitespace
         loop {
-            match self.chars.next() {
+            match self.chars.pop() {
                 // Eat the space
                 Some(c) if c.is_whitespace() => {},
 
@@ -114,14 +113,14 @@ impl<'a> CharReader<'a> {
         }
     }
 }
-impl Iterator for CharReader<'_> {
+impl Iterator for CharReader {
     type Item = Result<Token, ReadError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let c = match self.buffer.take() {
                 Some(c) => Some(c),
-                None => self.chars.next(),
+                None => self.chars.pop(),
             };
 
             return match c? {

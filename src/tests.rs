@@ -3,13 +3,13 @@ use core::f32;
 use safflower_macro::{load, text};
 
 #[test]
-pub fn absolute_minimal() {
+fn absolute_minimal() {
     load!("test-data/abs_min.txt");
     assert_eq!(text!(a), "c");
 }
 
 #[test]
-pub fn two_locales_direct() {
+fn two_locales_direct() {
     load!("test-data/greet_en_se.txt");
 
     let locale = localisation::Locale::En;
@@ -20,7 +20,7 @@ pub fn two_locales_direct() {
 }
 
 #[test]
-pub fn two_tight() {
+fn two_tight() {
     load!("test-data/tight_two.txt");
 
     let locale = localisation::Locale::L1;
@@ -33,7 +33,7 @@ pub fn two_tight() {
 }
 
 #[test]
-pub fn two_locales_macro() {
+fn two_locales_macro() {
     load!("test-data/greet_en_se.txt");
     localisation::set_locale(localisation::Locale::En);
     assert_eq!(text!(greet), "Hi!");
@@ -43,7 +43,7 @@ pub fn two_locales_macro() {
 }
 
 #[test]
-pub fn arg_str() {
+fn arg_str() {
     load!("test-data/greet_name_en_it.txt");
     let name = "Tester";
 
@@ -51,7 +51,7 @@ pub fn arg_str() {
 }
 
 #[test]
-pub fn arg_string() {
+fn arg_string() {
     load!("test-data/greet_name_en_it.txt");
     let name = String::from("Tester");
 
@@ -59,7 +59,7 @@ pub fn arg_string() {
 }
 
 #[test]
-pub fn arg_i32() {
+fn arg_i32() {
     load!("test-data/greet_name_en_it.txt");
     let name = 93393;
 
@@ -67,7 +67,7 @@ pub fn arg_i32() {
 }
 
 #[test]
-pub fn arg_bool() {
+fn arg_bool() {
     load!("test-data/greet_name_en_it.txt");
     let name = true;
 
@@ -75,7 +75,7 @@ pub fn arg_bool() {
 }
 
 #[test]
-pub fn arg_f32formatter() {
+fn arg_f32formatter() {
     load!("test-data/float_format.txt");
     let name = f32::consts::E;
 
@@ -85,4 +85,34 @@ pub fn arg_f32formatter() {
     assert_eq!(localisation::digits(locale, name), "value: 2.72");
     let locale = localisation::Locale::D3;
     assert_eq!(localisation::digits(locale, name), "value: 2.718");
+}
+
+#[test]
+fn separate_entries() {
+    load!("test-data/separate_entries.txt");
+    assert_eq!(text!(key1), "A");
+    assert_eq!(text!(key2), "A");
+    localisation::set_locale(localisation::Locale::B);
+    assert_eq!(text!(key1), "B");
+    assert_eq!(text!(key2), "B");
+}
+
+#[test]
+fn separate_files() {
+    load!("test-data/separate_files.txt");
+    assert_eq!(text!(key1), "A");
+    assert_eq!(text!(key2), "A");
+    localisation::set_locale(localisation::Locale::B);
+    assert_eq!(text!(key1), "B");
+    assert_eq!(text!(key2), "B");
+}
+
+#[test]
+fn separate_files_and_locales() {
+    load!("test-data/separate_files_wl.txt");
+    assert_eq!(text!(key1), "A");
+    assert_eq!(text!(key2), "A");
+    localisation::set_locale(localisation::Locale::B);
+    assert_eq!(text!(key1), "B");
+    assert_eq!(text!(key2), "B");
 }
