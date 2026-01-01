@@ -399,7 +399,7 @@ fn multi_from_text() {
             en \"hello\"
             gr \"καλημέρα\"
     ";
-    let parsed = Parser::from_str(source).parse().unwrap();
+    let parsed = Parser::from_text(source).parse().unwrap();
 
     let generator = Generator::new(parsed.locales, parsed.keys);
     let actual = generator.generate();

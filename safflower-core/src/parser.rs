@@ -49,8 +49,9 @@ impl Parser {
         })
     }
 
+    #[must_use]
     #[cfg(test)]
-    pub fn from_str(text: &str) -> Self {
+    pub fn from_text(text: &str) -> Self {
         let tokens = Box::new(CharReader::new(text));
 
         Self {
