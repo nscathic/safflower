@@ -116,3 +116,8 @@ fn separate_files_and_locales() {
     assert_eq!(text!(key1), "B");
     assert_eq!(text!(key2), "B");
 }
+
+#[test]
+fn messy_scopes() {
+    load!("test-data/scopes/root.txt");
+}

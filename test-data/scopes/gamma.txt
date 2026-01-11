@@ -1,0 +1,4 @@
+one_beta_three_gamma_key: l "one beta three gamma"
+
+!scope four
+one_beta_three_gamma_four_key: l "one beta three gamma four"

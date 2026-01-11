@@ -13,6 +13,8 @@ pub enum ParseError {
     ConfigMissingValues(&'static str),
     #[error("file \"{0}\" is included more than once")]
     ConfigDuplicateFile(PathBuf),
+    #[error("scope takes a single value, you have provided {0}")]
+    ConfigMultipleScopes(usize),
     
     #[error("duplicate locale \"{0}\"")]
     DuplicateLocale(String),
