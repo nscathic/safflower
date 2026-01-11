@@ -1,0 +1,4 @@
+alpha_key: l "alpha"
+
+!scope one
+alpha_one_key: l "alpha one"

@@ -1,0 +1,9 @@
+one_beta_key: l "one beta"
+
+!scope two
+one_beta_two_key: l "one beta two"
+
+!scope three
+one_beta_three_key: l "one beta three"
+
+!include gamma.txt

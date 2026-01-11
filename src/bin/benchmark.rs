@@ -1,17 +1,73 @@
+use std::time::{Duration, Instant};
+
 use safflower::{load, text};
+use safflower_core::{generator::Generator, parser::{ParsedData, Parser}};
 // use safflower_core as core;
 
 fn main() {
-    loading_formatting_noargs();
+    time_formatting_noargs();
+    time_loads();
+}
+
+fn time_loads() {
+    let path = "src/bin/lorem256_1024.txt";
+
+    #[cfg(debug_assertions)]
+    let n = 32;
+    #[cfg(not(debug_assertions))]
+    let n = 32*32;
+    
+    let mut ts = [Duration::ZERO; 4];
+
+    let t0 = Instant::now();
+    for _ in 0..n {
+        let tp = Instant::now();
+        let parser = Parser::new(path).unwrap();
+        ts[0] += tp.elapsed();
+
+        let tp = Instant::now();
+        let ParsedData { locales, scope } = parser.parse().unwrap();
+        ts[1] += tp.elapsed();
+
+        let tp = Instant::now();
+        let generator = Generator::new(locales, scope);
+        ts[2] += tp.elapsed();
+        
+        let tp = Instant::now();
+        _ = generator.generate();
+        ts[3] += tp.elapsed();
+
+    }
+    let dt = t0.elapsed();
+
+    let times = ts.map(|t| t.as_secs_f64());
+    let total: f64 = times.iter().sum();
+    let times = times.map(|t| t / total * 100.0);
+
+    println!(
+        "reading {path} {n} times took {},\n\
+        on average: {}\n\
+        by part:\n\
+        \treading:    {:.3} %\n\
+        \tparsing:    {:.2} %\n\
+        \tprepping:   {:.3} %\n\
+        \tgenerating: {:.2} %",
+        nice_time(dt),
+        nice_time_avg(dt, n),
+        times[0],
+        times[1],
+        times[2],
+        times[3],
+    )
 }
 
 #[allow(clippy::useless_format)]
-fn loading_formatting_noargs() {
+fn time_formatting_noargs() {
     load!("src/bin/lorem256_1024.txt");
     
     let n = 1_000_000;
 
-    let t0 = std::time::Instant::now();
+    let t0 = Instant::now();
     for _ in 0..n {
         _ = format!(
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc \
@@ -23,17 +79,56 @@ fn loading_formatting_noargs() {
     }
     let time_format = t0.elapsed();
 
-    let t0 = std::time::Instant::now();
+    let t0 = Instant::now();
     for _ in 0..n {
         _ = text!(line0);
     }
     let time_text = t0.elapsed();
 
     println!(
-        "{n} format!s took {:.2} ms\n\
-         {n} text!s   took {:.2} ms = {:.1} %",
-        time_format.as_secs_f32()*1000.0,
-        time_text.as_secs_f32()*1000.0,
+        "{n} format!s took {}\n\
+         {n} text!s   took {} = {:.1} %",
+        nice_time(time_format),
+        nice_time(time_text),
         time_text.as_secs_f32() / time_format.as_secs_f32() * 100.
     );
+}
+
+fn nice_time(duration: Duration) -> String {
+    if duration.as_nanos() < 1_000 {
+        return format!("{} ns", duration.as_nanos())
+    }
+    if duration.as_micros() < 1_000 {
+        return format!("{} µs", digits(duration.as_nanos()))
+    }
+    if duration.as_millis() < 1_000 {
+        return format!("{} ms", digits(duration.as_micros()))
+    }
+    
+    format!("{:.1} s", duration.as_secs_f32())
+}
+
+fn digits(number: u128) -> String {
+    if number < 10_000 {
+        return format!("{:.3}", number as f64 / 1e3)
+    }
+    if number < 100_000 {
+        return format!("{:.2}", number as f64 / 1e3)
+    }
+    format!("{:.1}", number as f64 / 1e3)
+}
+
+fn nice_time_avg(duration: Duration, n: usize) -> String {
+    let duration = duration.as_secs_f64() / n as f64;
+    if duration < 1e-6 {
+        return format!("{:.1} ns", duration * 1e9)
+    }
+    if duration < 1e-3 {
+        return format!("{:.1} µs", duration * 1e6)
+    }
+    if duration < 1.0 {
+        return format!("{:.1} ms", duration * 1e3)
+    }
+    
+    format!("{:.1} s", duration)
 }

@@ -1,0 +1,9 @@
+!locales l
+!include alpha.txt
+
+root_key: l "root"
+
+!scope one
+one_key: l "one"
+
+!include beta.txt

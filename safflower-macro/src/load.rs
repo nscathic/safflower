@@ -2,7 +2,7 @@ use quote::quote;
 use safflower_core::{
     generator::Generator, 
     name::Name, 
-    parser::{Key, ParsedData, Parser}, 
+    parser::{ParsedData, Parser, Scope}, 
 };
 
 pub struct Loader {
@@ -24,7 +24,7 @@ impl Loader {
     pub fn collect(self) -> syn::Result<LoadedData> {
         let parsed = Parser::new(self.path).map(Parser::parse);
 
-        let ParsedData { locales, keys } = match parsed {
+        let ParsedData { locales, scope } = match parsed {
             Ok(Ok(pd)) => pd,
             Ok(Err(e)) | Err(e) => return Err(syn::Error::new(
                 self.span, 
@@ -34,20 +34,20 @@ impl Loader {
 
         Ok(LoadedData {
             locales,
-            keys,
+            scope,
         })
     }
 }
 
 pub struct LoadedData {
     locales: Vec<Name>,
-    keys: Vec<Key>,
+    scope: Scope,
 }
 impl quote::ToTokens for LoadedData {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let generator = Generator::new(
             self.locales.clone(), 
-            self.keys.clone(),
+            self.scope.clone(),
         );
 
         let code = generator.generate();

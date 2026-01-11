@@ -1,12 +1,19 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    error::Error, name::Name, reader::{CharReader, ReadError, Token}, shorten
+    error::Error, 
+    name::Name, 
+    parser::{config::Module, scope::TempScope}, 
+    reader::{CharReader, ReadError, Token},
 };
 
 mod error;
 mod config;
+mod key;
+mod scope;
 pub use error::ParseError;
+pub use key::{Key, TempKey, Entry};
+pub use scope::Scope;
 use config::Configuration;
 
 #[cfg(test)]
@@ -20,7 +27,7 @@ pub struct Parser {
     read_paths: Vec<PathBuf>,
 
     config: Configuration,
-    keys: Vec<TempKey>,
+    scope: TempScope,
 
     comment: Option<String>,
 }
@@ -43,7 +50,7 @@ impl Parser {
             read_paths,
 
             config: Configuration::new(path.as_ref().into()),
-            keys: vec![],
+            scope: TempScope::default(),
             
             comment: None,
         })
@@ -61,7 +68,7 @@ impl Parser {
             read_paths: vec![],
 
             config: Configuration::new(PathBuf::from("string")),
-            keys: vec![],
+            scope: TempScope::default(),
             
             comment: None,
         }
@@ -84,24 +91,26 @@ impl Parser {
             read_paths: vec![],
 
             config: Configuration::new(PathBuf::from("vec")),
-            keys: vec![],
+            scope: TempScope::default(),
             
             comment: None,
         }
     }  
 
     fn refill_tokens(&mut self) -> Result<bool, Error> {
-        let Some(path) = self.config.pop_path() else { return Ok(false); };
+        let Some(module) = self.config.pop_path() else { return Ok(false); };
+
+        let Module { path, .. } = module;
 
         if self.read_paths.contains(&path) {
-            return Err(self.contextualise(
+            return Err(self.config.parse_err(
                 ParseError::ConfigDuplicateFile(path)
             ));
         }
 
         let source = std::fs::read_to_string(&path)
         .map_err(|e| Error::Io(
-            self.config.current_path.clone(),
+            path.clone(),
             e,
         ))?;
         
@@ -120,7 +129,10 @@ impl Parser {
         loop {
             let token = match self.buffer.take() {
                 Some(t) => Some(t),
-                None => self.tokens.next().transpose()?,
+                None => self.tokens
+                    .next()
+                    .transpose()
+                    .map_err(|e| self.config.read_err(e))?,
             };
             
             match token {
@@ -129,19 +141,23 @@ impl Parser {
             }
         }
 
-        let keys = std::mem::take(&mut self.keys);
+        // let keys = std::mem::take(&mut self.keys);
 
-        let keys = keys
-        .into_iter()
-        .map(|key| key.validate(&self.config.locales))
-        .collect::<Result<_, ParseError>>()
-        .map_err(|e| self.contextualise(e))?;
+        // let keys = keys
+        // .into_iter()
+        // .map(|key| key.validate(&self.config.locales))
+        // .collect::<Result<_, ParseError>>()
+        // .map_err(|e| self.config.err(e))?;
+
+        // let scope = Scope::create(&self.config, keys)?;
+        let scope = self.scope.validate(&self.config)?;
 
         let locales = self.config.locales;
 
         Ok(ParsedData {
             locales,
-            keys,
+            // keys,
+            scope,
         })
     }
 
@@ -164,7 +180,7 @@ impl Parser {
             Token::Key(id) => self.parse_key(id)?,
 
             // We can't start a line with a locale or value
-            t => return Err(self.contextualise(
+            t => return Err(self.config.parse_err(
                 ParseError::UnexpectedToken(t)
             )),
         }
@@ -182,7 +198,7 @@ impl Parser {
             let Some(locale) = self.get_locale()? else { break; };
             let index = self.config
             .find_locale(&locale)
-            .ok_or_else(|| self.contextualise(
+            .ok_or_else(|| self.config.parse_err(
                 ParseError::UndeclaredLocale(locale.into())
             ))?;
 
@@ -193,34 +209,39 @@ impl Parser {
             did_something = true;
         }
 
+        // let scope = self.config.get_scope();
+
         if !did_something {
-            return Err(self.contextualise(ParseError::ExpectedLocale));
+            return Err(self.config.parse_err(ParseError::ExpectedLocale));
         }
 
         let key = TempKey {
             id,
+            scope: vec![],
             comment,
             entries,
         };
 
-        self.add_key(key).map_err(|e| self.contextualise(e))
+        self.add_key(key).map_err(|e| self.config.parse_err(e))
     }
 
     fn get_locale(&mut self) -> Result<Option<Name>, Error> {
         for t in self.tokens.by_ref() {
-            match t? {
+            let token = t.map_err(|e| self.config.read_err(e))?;
+            match token {
                 Token::Comment(c) => self.comment = Some(c),
                 Token::Locale(id) => return Ok(Some(id)),
 
                 // We expect key - loc - val - loc - val ...
-                // until there is a key again
-                Token::Key(id) => { 
-                    self.buffer = Some(Token::Key(id)); 
+                // until there is a key again (or maybe config)
+                Token::Config(_) |
+                Token::Key(_) => { 
+                    self.buffer = Some(token); 
                     return Ok(None);
                 }
 
-                t => return Err(self.contextualise(
-                    ParseError::UnexpectedToken(t)
+                Token::Value(v) => return Err(self.config.parse_err(
+                    ParseError::UnexpectedToken(Token::Value(v))
                 )),
             }
         }
@@ -229,22 +250,28 @@ impl Parser {
 
     fn get_value(&mut self) -> Result<Option<String>, Error> {
         for t in self.tokens.by_ref() {
-            match t? {
+            match t.map_err(|e| self.config.read_err(e))? {
                 Token::Comment(c) => self.comment = Some(c),
                 Token::Value(value) => return Ok(Some(value)),
 
-                t => return Err(self.contextualise(
+                t => return Err(self.config.parse_err(
                     ParseError::UnexpectedToken(t)
                 )),
             }
         }
-        Err(self.contextualise(ParseError::ExpectedValue))
+        Err(self.config.parse_err(ParseError::ExpectedValue))
     }
 
     fn add_key(&mut self, key: TempKey) -> Result<(), ParseError> {
+        let target_scope = self.config.get_scope();
+    
+        let scope = self.traverse_scopes(target_scope);
+
         // Check if an old key matches the new one
-        if let Some(old_key) = self.keys.iter_mut().find(|k| k.id == key.id) {
-            let TempKey { id, comment, entries } = key;
+        if let Some(old_key) = scope.keys
+        .iter_mut()
+        .find(|k| k.id == key.id && k.scope == key.scope) {
+            let TempKey { id, comment, entries, .. } = key;
 
             if old_key.entries.len() < entries.len() {
                 let size_difference = entries.len() - old_key.entries.len();
@@ -275,16 +302,31 @@ impl Parser {
             return Ok(());
         }
 
-        self.keys.push(key);
+        scope.keys.push(key);
 
         Ok(())
     }
+    
+    /// Goes through each step in the chain of scope names, finding it in the 
+    /// current mods, adding it if it doesn't exist.
+    fn traverse_scopes(&mut self, target_scope: Vec<Name>) -> &mut TempScope {
+        let mut current = &mut self.scope;
 
-    fn contextualise(&self, err: ParseError) -> Error {
-        Error::Parse(
-            self.config.current_path.clone(), 
-            err,    
-        )
+        for part in target_scope {
+            let index = current.nested
+            .iter()
+            .position(|(n, _)| n == &part)
+            .unwrap_or_else(|| {
+                let nested = TempScope::default();
+                let i = current.nested.len();
+                current.nested.push((part, Box::new(nested)));
+                i
+            });
+
+            current = &mut current.nested[index].1;
+        }
+
+        current
     }
 }
 
@@ -292,175 +334,6 @@ impl Parser {
 /// The collected data once the parsing is finished.
 pub struct ParsedData {
     pub locales: Vec<Name>,
-    pub keys: Vec<Key>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct TempKey {
-    id: Name,
-    comment: Option<String>,
-    entries: Vec<Option<Entry>>,
-}
-impl TempKey {
-    fn validate(self, locales: &[Name]) -> Result<Key, ParseError> {
-        if locales.is_empty() { return Err(ParseError::NoLocales); }
-        
-        let Self { id, comment, entries } = self;
-
-        let (entries, comments) = get_entries(entries, &id, locales)?;
-        let comment = get_comment(comments, comment, locales);
-        let arguments = get_arguments(&entries, &id, locales)?;
-
-        Ok(Key {
-            id,
-            arguments,
-            comment,
-            entries,
-        })
-    }
-}
-
-fn get_arguments(
-    entries: &[String], 
-    id: &Name,
-    locales: &[Name],
-) -> Result<Vec<String>, ParseError> {
-    let arguments = extract_arguments(&entries[0])?;
-        
-    let mismatch = entries
-    .iter()
-    .enumerate()
-    .skip(1)
-    .map(|(i, e)| (i, extract_arguments(e)))
-    .find(|(_, a)| !a.as_ref().is_ok_and(|a| a == &arguments));
-
-    if let Some((index, result)) = mismatch {
-        let args = result?;
-        return Err(ParseError::ArgumentMismatch(
-            id.to_str().to_string(), 
-            locales[index].to_str().to_string(),
-            args,
-            arguments,
-        ));
-    }
-
-    Ok(arguments)
-}
-
-fn extract_arguments(key: &str) -> Result<Vec<String>, ParseError> {
-    let mut arguments = Vec::new();
-    let mut argument = String::new();
-    let mut opened = false;
-    let mut unnamed_indexer = 0;
-    let mut formatting = false;
-
-    for c in key.chars() {
-        match c {
-            '{' if opened => return Err(ParseError::NestedBrace),
-            '{' => { opened = true; },
-
-            '}' if !opened => return Err(ParseError::ExtraClosingBrace),
-            '}' => {
-                if argument.is_empty() {
-                    argument = format!("{unnamed_indexer}");
-                    unnamed_indexer += 1;
-                }
-                else if !argument.starts_with(
-                    |c: char| c.is_ascii_alphabetic()
-                ) && !argument.chars().all(char::is_numeric)  {
-                    return Err(ParseError::ArgBadStart(
-                        key.to_string(), 
-                        shorten(&argument), 
-                        c,
-                    ))
-                }
-
-                if !arguments.contains(&argument) {                        
-                    arguments.push(argument);
-                }
-
-                argument = String::new();
-                opened = false;
-                formatting = false;
-            }
-
-            ':' if opened => formatting = true,
-
-            // Don't copy the formatting part
-            c if opened && !formatting => argument.push(
-                Name::validate_char(c)
-                .map_err(|_| ParseError::ArgBadChar(
-                    shorten(key), 
-                    shorten(&argument),
-                    c,
-                ))?
-            ),
-            
-            _ => (),
-        }
-    }
-
-    Ok(arguments) 
-}
-
-fn get_comment(
-    comments: Vec<Option<String>>,
-    key_comment: Option<String>,
-    locales: &[Name],
-) -> Option<String> {
-    let locale_comment = comments
-    .into_iter()
-    .enumerate()
-    .filter_map(|(i, comment)| 
-        comment.map(|c| format!("- *{}*: {c}\n", locales[i].to_str()))
-    )
-    .collect::<String>();
-
-    if locale_comment.is_empty() { return key_comment; }
-    
-    Some(format!(
-        "{} # Locale notes\n{locale_comment}", 
-        key_comment.unwrap_or_default(),
-    ))
-}
-
-fn get_entries(
-    entries: Vec<Option<Entry>>,
-    id: &Name,
-    locales: &[Name],
-) -> Result<(Vec<String>, Vec<Option<String>>), ParseError> {
-    if entries.len() < locales.len() {
-        return Err(ParseError::EntryMissingLocale(
-            shorten(id), 
-            locales[entries.len()].to_string(),
-        ));
-    }
-
-    entries
-    .into_iter()
-    .enumerate()
-    .map(|(i, e)| e.ok_or_else(|| ParseError::EntryMissingLocale(
-        shorten(id),
-        locales[i].to_str().to_string()
-    )))
-    .collect::<Result<Vec<Entry>,_>>()
-    .map(|ok| ok
-        .into_iter()
-        .map(|e| (e.value, e.comment))
-        .unzip()
-    )
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Key {
-    pub id: Name,
-    pub arguments: Vec<String>,
-    pub comment: Option<String>,
-    pub entries: Vec<String>,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct Entry {
-    pub value: String,
-    pub comment: Option<String>,
+    // pub keys: Vec<Key>,
+    pub scope: Scope,
 }

@@ -1,11 +1,11 @@
 # `safflower` 
 *Statically-Allocated Fromat-Friendly Localising (Written Entirely in Rust)*
 
+[![Webiste](https://img.shields.io/badge/site-nscathic-blue)](https://nscathic.eu/projects/safflower.html)
 [![Crates.io Version](https://img.shields.io/crates/v/safflower)](https://crates.io/crates/safflower)
 [![docs](https://img.shields.io/docsrs/safflower?logo=rust)](https://docs.rs/safflower/latest/)
 [![Repo](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/nscathic/safflower)
 [![License](https://img.shields.io/badge/license-MIT-blue)](license.md)
-
 
 `safflower` aims to provide a no-fuss text localiser with minimum runtime overhead.
 It does so in two main ways: 
@@ -32,7 +32,7 @@ This also means that the text getting functions are *thread blocking*, but only 
 
 >***Note***
 >
->In a small benchmark on an old laptop, one million calls to `text!` for a 256-byte string took about ~110 ms, whereas one million calls to `format!` for the same text took about ~65 ms. 
+>In a small benchmark on an old laptop, one million calls to `text!` for a 256-byte string took about ~13 ms (in release mode), whereas one million calls to `format!` for the same text took about ~2 ms. 
 
 ### File structure
 The file structure is designed to attempt to find a balance between ease-of-use and ease-of-parsing (which affects compile time). A minimal example:
@@ -57,9 +57,12 @@ There are two exceptions:
 #### Config
 A config line is a `!` followed y a key and one or more values, all on the same line. 
 
-There are currently two config keys:
+These are the currently available config keys:
 - `!locales` is used to declare locales, separated by whitespace. This must occur before any text entries using them.
-- `!include` appends one or more files' contents to be parsed, in the order read
+
+- `!include` appends one or more files' contents to be parsed, in the order read.
+
+- `!scope` declares everything following it to be in a scope. This translates directly to a structure of `pub mod`s, in a pretty straightforward way. A file included after `!scope a` is genereated completely inside `pub mod a { .. }`. Note that declaring several scopes in one file will *not* nest them.
 
 #### Entries
 The rest of the file must contain entries, each is a key followed by a colon `:` and at least one pair of a locale and a quote-enclosed value. 
@@ -95,7 +98,7 @@ use safflower::{text, load};
 load!("strings.txt");
 
 let foo = "foo";
-let bar = "bar";
+let bar = 42;
 
 assert_eq!(
     text!(text),

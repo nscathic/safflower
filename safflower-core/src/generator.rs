@@ -1,20 +1,20 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 
-use crate::{LOCALE_FAILURE_MESSAGE, name::Name, parser::Key};
+use crate::{LOCALE_FAILURE_MESSAGE, name::Name, parser::{Key, Scope}};
 
 #[cfg(test)]
 mod tests;
 
 pub struct Generator {
     locales: Vec<(syn::Ident, String)>,
-    keys: Vec<Key>,
+    scope: Scope,
 }
 
 impl Generator {
     #[must_use] 
     /// Sets itself up.
-    pub fn new(locales: Vec<Name>, keys: Vec<Key>) -> Self {
+    pub fn new(locales: Vec<Name>, scope: Scope) -> Self {
         let locales = locales
         .into_iter()
         .map(|loc| (
@@ -25,7 +25,7 @@ impl Generator {
 
         Self { 
             locales, 
-            keys,
+            scope,
         }
     }
 
@@ -39,16 +39,19 @@ impl Generator {
         let getter = Self::generate_getter();
         let setter = Self::generate_setter();
         
-        let keys = std::mem::take(&mut self.keys)
-        .into_iter()
-        .map(|key| self.generate_from_key(key))
-        .collect::<Vec<_>>();
+        // let keys = std::mem::take(&mut self.keys)
+        // .into_iter()
+        // .map(|key| self.generate_from_key(key))
+        // .collect::<Vec<_>>();
+
+        let scope = std::mem::take(&mut self.scope);
+        let keys = self.generate_entries(scope);
 
         quote! {
             #locales
             #getter
             #setter
-            #(#keys)*
+            #keys
         }.into_token_stream()
     }
     
@@ -163,6 +166,32 @@ impl Generator {
                     #(#entries,)*
                 }
             }
+        }
+    }
+
+    fn generate_entries(&self, scope: Scope) -> TokenStream {
+        let Scope { keys, nested } = scope;
+        let keys = keys
+        .into_iter()
+        .map(|key| self.generate_from_key(key))
+        .collect::<Vec<_>>();
+
+        let nested = nested
+        .into_iter()
+        .map(|(name, scope)| {
+            let inner = self.generate_entries(*scope);
+            let module = syn::Ident::new(&name.to_str(), Span::call_site());
+            quote! {
+                pub mod #module { 
+                    use super::Locale;
+                    #inner 
+                }
+            }
+        });
+
+        quote! {
+            #(#keys)*
+            #(#nested)*
         }
     }
 }
