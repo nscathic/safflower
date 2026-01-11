@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.0.0] 2026-01-11
+### Added
+- `!scope` to declare scoped entries.
+
 ## [0.4.0] 2026-01-01
 ### Added
 - `!include` config line to include more files for parsing. Paths are relative to parent file.

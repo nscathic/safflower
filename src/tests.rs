@@ -120,4 +120,44 @@ fn separate_files_and_locales() {
 #[test]
 fn messy_scopes() {
     load!("test-data/scopes/root.txt");
+    assert_eq!(text!(root_key), "root");
+
+    assert_eq!(
+        text!(alpha_key), 
+        "alpha"
+    );
+    assert_eq!(
+        text!(one::alpha_one_key), 
+        "alpha one"
+    );
+    
+    assert_eq!(
+        text!(one::one_key), 
+        "one"
+    );
+
+    assert_eq!(
+        text!(one::one_beta_key), 
+        "one beta"
+    );
+
+    assert_eq!(
+        text!(one::two::one_beta_two_key), 
+        "one beta two"
+    );
+
+    assert_eq!(
+        text!(one::three::one_beta_three_key), 
+        "one beta three"
+    );
+
+    assert_eq!(
+        text!(one::three::one_beta_three_gamma_key), 
+        "one beta three gamma"
+    );
+
+    assert_eq!(
+        text!(one::three::four::one_beta_three_gamma_four_key), 
+        "one beta three gamma four"
+    );
 }

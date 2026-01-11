@@ -27,7 +27,6 @@ pub struct Parser {
     read_paths: Vec<PathBuf>,
 
     config: Configuration,
-    keys: Vec<TempKey>,
     scope: TempScope,
 
     comment: Option<String>,
@@ -51,7 +50,6 @@ impl Parser {
             read_paths,
 
             config: Configuration::new(path.as_ref().into()),
-            keys: vec![],
             scope: TempScope::default(),
             
             comment: None,
@@ -70,7 +68,6 @@ impl Parser {
             read_paths: vec![],
 
             config: Configuration::new(PathBuf::from("string")),
-            keys: vec![],
             scope: TempScope::default(),
             
             comment: None,
@@ -94,7 +91,6 @@ impl Parser {
             read_paths: vec![],
 
             config: Configuration::new(PathBuf::from("vec")),
-            keys: vec![],
             scope: TempScope::default(),
             
             comment: None,

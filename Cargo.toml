@@ -1,21 +1,22 @@
 [package]
 name = "safflower"
-version = "0.4.1"
+version = "1.0.0"
 edition = "2024"
 authors = ["nscathic"]
 license = "MIT"
 description = "A localising tool with macros to statically allocate formattable text."
 repository = "https://github.com/nscathic/safflower"
+homepage = "https://nscathic.eu/projects/safflower.html"
 readme = "readme.md"
 keywords = ["localisation", "localization", "language", "formatting"]
 categories = ["internationalization", "localization"]
 exclude = ["src/bin"]
 
 [dependencies]
-# safflower-core  = "0.4.1"
-safflower-core  = {path = "./safflower-core"}
-# safflower-macro = "0.4.1"
-safflower-macro = {path = "./safflower-macro"}
+safflower-core  = "1.0.0"
+# safflower-core  = {path = "./safflower-core"}
+safflower-macro = "1.0.0"
+# safflower-macro = {path = "./safflower-macro"}
 
 [workspace]
 members = ["safflower-core", "safflower-macro"]

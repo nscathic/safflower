@@ -180,9 +180,9 @@ impl Generator {
         .into_iter()
         .map(|(name, scope)| {
             let inner = self.generate_entries(*scope);
-            let module = syn::Ident::new(&name.type_name(), Span::call_site());
+            let module = syn::Ident::new(&name.to_str(), Span::call_site());
             quote! {
-                mod #module { 
+                pub mod #module { 
                     use super::Locale;
                     #inner 
                 }
