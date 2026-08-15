@@ -362,8 +362,9 @@ fn get_comment(
 
     if locale_comment.is_empty() { return key_comment; }
     
-    Some(format!(
-        "{} # Locale notes\n{locale_comment}", 
-        key_comment.unwrap_or_default(),
+    Some(key_comment
+    .map_or_else(
+        || format!(" # Locale notes\n{locale_comment}"),
+        |kc| format!("{kc}\n\n # Locale notes\n{locale_comment}"),
     ))
 }

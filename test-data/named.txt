@@ -1,0 +1,1 @@
+!locales a(Language A) b(Language B)

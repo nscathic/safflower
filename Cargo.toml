@@ -10,7 +10,7 @@ homepage = "https://nscathic.eu/projects/safflower.html"
 readme = "readme.md"
 keywords = ["localisation", "localization", "language", "formatting"]
 categories = ["internationalization", "localization"]
-exclude = ["src/bin"]
+exclude = ["src/bin", "test-data"]
 
 [dependencies]
 # safflower-core  = "1.0.0"

@@ -21,18 +21,14 @@ The macro generates a module `localisation` with a few things:
 - an enum for your locales;
 - a const array of all available locales (for e.g. iteration);
 - a function for every key in your file, to the text;
-- a static `Mutex` to keep the currently set locale.
+- a static `RwLock` to keep the currently set locale.
 
 ### Locale choice
-The user does not need to hold onto any state, since the locale setting is kept in a static `Mutex`, accessible raw or through `localisation::set_locale()` and `localisation::get_locale()`. During the `load!` macro, it is set to the first declared locale.
+The user does not need to hold onto any state, since the locale setting is kept in a static `RwLock`, accessible directly (`localisation::LOCALE`) or through `localisation::set_locale()` and `localisation::get_locale()`. During the `load!` macro, it is set to the first declared locale.
 
-I'm not a fan of global variables, but I think this makes sense here: we don't expect it to change a lot, maybe not at all during the lifetime of the program, but every single piece of text depends on it. 
+Using an `RwLock` means that you can have concurrent reads of the locale, and only block for writes. This makes sense -- you wouldn't want to change the locale very often, I imagine. 
 
-This also means that the text getting functions are *thread blocking*, but only for the short while it takes to access it -- `Locale` implements `Copy` to minimise fuzz. If someone has a better solution, feel free to say so.
-
->***Note***
->
->In a small benchmark on an old laptop, one million calls to `text!` for a 256-byte string took about ~13 ms (in release mode), whereas one million calls to `format!` for the same text took about ~2 ms. 
+`Locale` implements `std::fmt::Display`, and will print the name provided in parentheses or the basic key if no name is provided.
 
 ### File structure
 The file structure is designed to attempt to find a balance between ease-of-use and ease-of-parsing (which affects compile time). A minimal example:

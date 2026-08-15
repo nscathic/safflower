@@ -1,4 +1,5 @@
 !locales en se
+
 # This is a basic greeting.
 greet:
     # The swedish informality makes "hej" the proper choice.

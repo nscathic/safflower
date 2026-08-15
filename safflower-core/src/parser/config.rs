@@ -2,7 +2,12 @@ use std::{path::PathBuf, rc::Rc};
 
 use proc_macro2::Span;
 
-use crate::{error::Error, name::Name, parser::ParseError, reader::ReadError};
+use crate::{
+    error::Error, 
+    name::Name, 
+    parser::ParseError, 
+    reader::ReadError,
+};
 
 pub struct Configuration {
     locales: Vec<Rc<Locale>>,

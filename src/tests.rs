@@ -161,3 +161,18 @@ fn messy_scopes() {
         "one beta three gamma four"
     );
 }
+
+#[test]
+fn names() {
+    load!("test-data/named.txt");
+    let prints = localisation::LOCALES
+    .map(|l| format!("{l}"));
+
+    assert_eq!(
+        prints,
+        [
+            String::from("Language A"),
+            String::from("Language B"),
+        ],
+    );
+}

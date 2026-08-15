@@ -4,5 +4,3 @@
 mod tests;
 
 pub use safflower_macro::{load, text};
-
-// load!("strings.txt");

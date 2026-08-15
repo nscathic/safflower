@@ -1,17 +1,23 @@
 use std::{path::{Path, PathBuf}, rc::Rc};
 
 use crate::{
-    error::Error, name::Name, parser::{config::Module, key::KeyBuilder, scope::ScopeBuilder}, reader::{CharReader, ReadError, Token},
+    error::Error, 
+    name::Name, 
+    reader::{Token, Reader, ReadError},
 };
 
 mod error;
 mod config;
 mod key;
 mod scope;
+
 pub use error::ParseError;
 pub use key::Key;
 pub use scope::Scope;
 pub use config::{Configuration, Locale};
+use config::Module; 
+use key::KeyBuilder; 
+use scope::ScopeBuilder;
 
 #[cfg(test)]
 mod tests;
@@ -34,10 +40,10 @@ impl Parser {
     /// # Errors 
     /// If there is a problem reading the file as UTF-8.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, Error> {
-        let source = std::fs::read_to_string(&path)
-        .map_err(|e| Error::Io(path.as_ref().into(), e))?;
-
-        let tokens = Box::new(CharReader::new(&source));
+        let tokens = Box::new(
+            Reader::new(&path)
+            .map_err(|e| Error::Io(path.as_ref().into(), e))?
+        );
         let read_paths = vec![path.as_ref().into()];
 
         Ok(Self {
@@ -55,8 +61,8 @@ impl Parser {
 
     #[must_use]
     #[cfg(test)]
-    pub fn from_text(text: &str) -> Self {
-        let tokens = Box::new(CharReader::new(text));
+    pub fn from_text(text: &'static str) -> Self {
+        let tokens = Box::new(Reader::from_bytes(text.as_bytes()));
 
         Self {
             tokens,
@@ -105,14 +111,11 @@ impl Parser {
             ));
         }
 
-        let source = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) => return Err(Error::Io(path, e)),
-        };
-        
+        self.tokens = Box::new(
+            Reader::new(&path)
+            .map_err(|e| Error::Io(path.clone(), e))?
+        );
         self.read_paths.push(path);
-
-        self.tokens = Box::new(CharReader::new(&source));
 
         Ok(true)
     }
