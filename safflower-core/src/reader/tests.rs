@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use super::*;
 
 fn read_all(source: &str) -> Result<Vec<Token>, ReadError> { 
@@ -71,7 +73,10 @@ fn comment_config() {
     let tokens = read_all(source).unwrap();
     assert_eq!(
         tokens,
-        vec![Token::Config(String::from("locales en "))]
+        vec![Token::Config(
+            String::from("locales"),
+            String::from(" en ")
+        )]
     );
 }
 
@@ -97,18 +102,18 @@ fn comment_others() {
 
 #[test]
 fn config() {
-    for (source, comment) in [
-        ("!\n", ""),
-        ("! \n", " "),
-        ("\n!\n\n", ""),
-        (" !\t \n ", "\t "),
-        ("!text\n", "text"),
-        ("!one two\n", "one two"),
+    for (source, expected) in [
+        ("!\n", Token::Config(String::new(), String::new())),
+        ("! \n", Token::Config(String::new(), " ".into())),
+        ("\n!\n\n", Token::Config(String::new(), String::new())),
+        (" !\t \n ", Token::Config(String::new(), "\t ".into())),
+        ("!text\n", Token::Config("text".into(), String::new())),
+        ("!one two\n", Token::Config("one".into(), " two".into())),
     ] {
         let tokens = read_all(source).unwrap();
         assert_eq!(
             tokens, 
-            vec![Token::Config(comment.to_string())], 
+            vec![expected], 
             "src: '{source}'"
         );
     }

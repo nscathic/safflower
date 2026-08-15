@@ -34,6 +34,9 @@ pub enum ParseError {
     #[error("value contains unopened closing brace '}}'")]
     ExtraClosingBrace,
 
+    #[error("locale \"{0}\" has missing ')' to end name declaration")]
+    UnmatchedNameParen(String),
+
     #[error("line \"{0}\" contains argument \"{1}\" with invalid char \
         \"{2}\", but must be only alphanumeric, '-', or '_'")]
     ArgBadChar(String, String, char),
@@ -51,4 +54,7 @@ pub enum ParseError {
     ExpectedLocale,
     #[error("expected value to follow, but token stream ended")]
     ExpectedValue,
+
+    #[error("key \"{0}\" has no entries")]
+    NoEntries(String),
 }

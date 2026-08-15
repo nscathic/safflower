@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+
 use std::vec;
 
 use crate::{name::Name, reader::Token};
@@ -20,12 +22,11 @@ fn nest(mut parent: Scope, str: &str, child: Scope) -> Scope {
 
 fn name(str: &str) -> Name { Name::try_from(str).unwrap() }
 
-fn names<const S: usize>(strs: [&str; S]) -> Vec<Name> {
-    strs
-    .into_iter()
-    .map(Name::try_from)
-    .collect::<Result<_,_>>()
-    .unwrap()
+fn locale(name: &str) -> Rc<Locale> {
+    Rc::new(Locale::new( 
+        Name::try_from(name).unwrap(), 
+        None,
+    ))
 }
 
 fn assert_scopes_eq(expected: &Scope, actual: &Scope) {
@@ -46,51 +47,125 @@ fn assert_scopes_eq(expected: &Scope, actual: &Scope) {
 #[test]
 fn bad_locales() {
     let ins = [
-        "",
-        "locs",
-        "locales",
-        " locales ",
-        "locales se se",
-        "locales se SE",
-        "locales U$",
-        "locales -a",
-        "locales __Temp",
+        ("", ""),
+        ("locs", ""),
+        ("locales", ""),
+        (" locales ", ""),
+        ("locales", "se se"),
+        ("locales", "se SE"),
+        ("locales", "U$",),
+        ("locales", "-a"),
+        ("locales", "__Temp"),
     ];
 
-    for input in ins {
+    for (key, args) in ins {
         let mut configuration = Configuration::new(PathBuf::new());
-        let result = configuration.parse_config(input);
+        let result = configuration.parse_config(key, args);
 
-        assert!(result.is_err(), "'{input}' should be err");
+        assert!(result.is_err(), "('{key}' '{args}') should be err");
     }
 }
 
 #[test]
 fn ok_locales() {
     let ins_outs = [
-        ("locales en",         names(["en"])),
-        ("locales EN",         names(["en"])),
-        ("locales long-test",  names(["long_test"])),
-        ("locales b-",         names(["b_"])),
-        ("locales b_-",        names(["b__"])),
-        ("locales se02 SE01",  names(["se02", "se01"])),
-        ("locales it fr",      names(["it", "fr"])),
-        ("locales \tit   fr",  names(["it", "fr"])),
+        ("locales", "en",         vec!["en"]),
+        ("locales", "EN",         vec!["en"]),
+        ("locales", "long-test",  vec!["long_test"]),
+        ("locales", "b-",         vec!["b_"]),
+        ("locales", "b_-",        vec!["b__"]),
+        ("locales", "se02 SE01",  vec!["se02", "se01"]),
+        ("locales", "it fr",      vec!["it", "fr"]),
+        ("locales", "\tit   fr",  vec!["it", "fr"]),
     ];
 
-    for (input, output) in ins_outs {
+    for (key, args, output) in ins_outs {
         let mut configuration = Configuration::new(PathBuf::new());
-        let result = configuration.parse_config(input);
+        let result = configuration.parse_config(key, args);
 
-        assert!(result.is_ok(), "'{input}' should be ok; got {result:?}");
-        assert_eq!(configuration.locales, output);
+        assert!(
+            result.is_ok(),
+            "('{key}' '{args}') should be ok; got {result:?}",
+        );
+        
+        let locs = configuration.into_locales();
+        let actual = locs
+        .iter()
+        .map(|lc| lc.key().as_str())
+        .collect::<Vec<_>>();
+    
+        assert_eq!(actual, output);
+    }
+}
+
+#[test]
+fn ok_locale_names() {
+    let ins_outs = [
+        ("locales", "en(Eng)", 
+            vec![("en", "Eng")]),
+        ("locales", "EN(eng)", 
+            vec![("en", "eng")]),
+        ("locales", "long-test(Long Test)", 
+            vec![("long_test", "Long Test")]),
+        ("locales", "b-( b )", 
+            vec![("b_", " b ")]),
+        ("locales", "it(Italian) fr(European French)", 
+            vec![("it", "Italian"), ("fr", "European French")]),
+    ];
+
+    for (key, args, output) in ins_outs {
+        let mut configuration = Configuration::new(PathBuf::new());
+        let result = configuration.parse_config(key, args);
+
+        assert!(
+            result.is_ok(), 
+            "('{key}' '{args}') should be ok; got {result:?}",
+        );
+
+        configuration
+        .into_locales()
+        .into_iter()
+        .enumerate()
+        .for_each(|(i, lc)| {
+            assert_eq!(
+                lc.key().as_str(),
+                output[i].0,
+                "key mismatch"
+            );
+            assert_eq!(
+                lc.name(),
+                output[i].1,
+                "name mismatch"
+            );
+        });
+    }
+}
+
+#[test]
+fn bad_locale_names() {
+    let ins = [
+        ("locales", "en("),
+        ("locales", "EN (eng)"), 
+        ("locales", "long-test(Long Test"), 
+        ("locales", "b-((b))"), 
+        ("locales", "it(Italian) fr(European French))"), 
+    ];
+
+    for (key, args) in ins {
+        let mut configuration = Configuration::new(PathBuf::new());
+        let result = configuration.parse_config(key, args);
+
+        assert!(
+            result.is_err(), 
+            "('{key}' '{args}') should be err",
+        );
     }
 }
 
 #[test] 
 fn minimal_case() {
     let tokens = vec![
-        Token::Config(String::from("locales a")),
+        Token::Config("locales".into(), "a".into()),
         Token::Key(name("key")),
         Token::Locale(name("a")),
         Token::Value(String::from("value")),
@@ -99,16 +174,18 @@ fn minimal_case() {
     let scope = parse(tokens)
     .expect("should be ok");
 
+    let loc = locale("a");
+
     assert_eq!(
         scope,
-        to_scope(&[Key::name("key").entries(&["value"])]),
+        to_scope(&[Key::name("key").entries(&[(&loc, "value")])]),
     );
 }
 
 #[test] 
 fn key_comment() {
     let tokens = vec![
-        Token::Config(String::from("locales a")),
+        Token::Config("locales".into(), "a".into()),
         Token::Comment(String::from("hi!")),
         Token::Key(name("key")),
         Token::Locale(name("a")),
@@ -118,10 +195,12 @@ fn key_comment() {
     let scope = parse(tokens)
     .expect("should be ok");
 
+    let loc = locale("a");
+
     assert_eq!(
         scope,
         to_scope(&[
-            Key::name("key").comment("hi!").entries(&["value"])
+            Key::name("key").comment("hi!").entries(&[(&loc, "value")])
         ]),
     );
 }
@@ -129,18 +208,19 @@ fn key_comment() {
 #[test] 
 fn entry_comments() {
     let tokens = vec![
-        Token::Config(String::from("locales a")),
+        Token::Config("locales".into(), "a".into()),
         Token::Key(name("key")),
         Token::Comment(String::from("hi!")),
         Token::Locale(name("a")),
         Token::Value(String::from("value")),
     ];
+    let loc = locale("a");
 
     let scope_1 = parse(tokens)
     .expect("should be ok");
 
     let tokens = vec![
-        Token::Config(String::from("locales a")),
+        Token::Config("locales".into(), "a".into()),
         Token::Key(name("key")),
         Token::Locale(name("a")),
         Token::Comment(String::from("hi!")),
@@ -157,7 +237,7 @@ fn entry_comments() {
         to_scope(&[
             Key::name("key")
                 .comment(" # Locale notes\n- *a*: hi!\n")
-                .entries(&["value"])
+                .entries(&[(&loc, "value")])
         ]),
     );
 }
@@ -165,13 +245,15 @@ fn entry_comments() {
 #[test] 
 fn mutli_locales() {
     let tokens = vec![
-        Token::Config(String::from("locales a b")),
+        Token::Config("locales".into(), "a b".into()),
         Token::Key(name("key")),
         Token::Locale(name("a")),
         Token::Value(String::from("value A")),
         Token::Locale(name("b")),
         Token::Value(String::from("value B")),
     ];
+    let a = locale("a");
+    let b = locale("b");
 
     let scope = parse(tokens)
     .expect("should be ok");
@@ -179,7 +261,10 @@ fn mutli_locales() {
     assert_eq!(
         scope,
         to_scope(&[
-            Key::name("key").entries(&["value A", "value B"])
+            Key::name("key").entries(&[
+                (&a, "value A"), 
+                (&b, "value B"),
+            ])
         ]),
     );
 }
@@ -200,7 +285,7 @@ fn missing_locales() {
 #[test] 
 fn missing_declared_locale() {
     let tokens = vec![
-        Token::Config(String::from("locales a b")),
+        Token::Config("locales".into(), "a b".into()),
         Token::Key(name("key")),
         Token::Locale(name("a")),
         Token::Value(String::from("value A")),
@@ -212,7 +297,7 @@ fn missing_declared_locale() {
 #[test] 
 fn using_declared_default() {
     let tokens = vec![
-        Token::Config(String::from("locales a b")),
+        Token::Config("locales".into(), "a b".into()),
         Token::Key(name("key")),
         Token::Value(String::from("value A")),
         Token::Locale(name("b")),
@@ -233,7 +318,7 @@ fn using_and_not_default() {
     assert!(parse(tokens).is_err());
 
     let tokens = vec![
-        Token::Config(String::from("locales b")),
+        Token::Config("locales".into(), "b".into()),
         Token::Key(name("key")),
         Token::Locale(name("b")),
         Token::Value(String::from("value B")),
@@ -245,7 +330,7 @@ fn using_and_not_default() {
 #[test] 
 fn separate_key() {
     let tokens = vec![
-        Token::Config(String::from("locales a b")),
+        Token::Config("locales".into(), "a b".into()),
         Token::Key(name("key")),
         Token::Locale(name("a")),
         Token::Value(String::from("value A")),
@@ -259,14 +344,22 @@ fn separate_key() {
         Token::Locale(name("b")),
         Token::Value(String::from("value B")),
     ];
+    let a = locale("a");
+    let b = locale("b");
 
     let scope = parse(tokens).expect("should be ok");
 
     assert_eq!(
         scope,
         to_scope(&[
-            Key::name("key").entries(&["value A", "value B"]), 
-            Key::name("key2").entries(&["value A", "value B"])
+            Key::name("key").entries(&[
+                (&a, "value A"), 
+                (&b, "value B"),
+            ]), 
+            Key::name("key2").entries(&[
+                (&a, "value A"), 
+                (&b, "value B"),
+            ])
         ]),
     );
 }
@@ -274,7 +367,7 @@ fn separate_key() {
 #[test]
 fn single_scope() {
     let tokens = vec![
-        Token::Config(String::from("locales a b")),
+        Token::Config("locales".into(), "a b".into()),
         
         Token::Key(name("key")),
             Token::Locale(name("a")),
@@ -282,21 +375,29 @@ fn single_scope() {
             Token::Locale(name("b")),
             Token::Value(String::from("value B")),
         
-        Token::Config(String::from("scope x")),
+        Token::Config("scope".into(), "x".into()),
         Token::Key(name("scoped")),
             Token::Locale(name("a")),
             Token::Value(String::from("value A")),
             Token::Locale(name("b")),
             Token::Value(String::from("value B")),
     ];
+    let a = locale("a");
+    let b = locale("b");
 
     let scope = parse(tokens).expect("should be ok");
 
     assert_scopes_eq(
         &nest(
-            to_scope(&[Key::name("key").entries(&["value A", "value B"])]),
+            to_scope(&[Key::name("key").entries(&[
+                (&a, "value A"), 
+                (&b, "value B"),
+            ])]),
             "x",
-            to_scope(&[Key::name("scoped").entries(&["value A", "value B"])]),
+            to_scope(&[Key::name("scoped").entries(&[
+                (&a, "value A"), 
+                (&b, "value B"),
+            ])]),
         ),
         &scope,
     );
@@ -305,8 +406,8 @@ fn single_scope() {
 #[test]
 fn mutliple_scope() {
     let tokens = vec![
-        Token::Config(String::from("locales a b")),
-        Token::Config(String::from("scope x")),
+        Token::Config("locales".into(), "a b".into()),
+        Token::Config("scope".into(), "x".into()),
         
         Token::Key(name("key")),
             Token::Locale(name("a")),
@@ -314,17 +415,19 @@ fn mutliple_scope() {
             Token::Locale(name("b")),
             Token::Value(String::from("value B")),
         
-        Token::Config(String::from("scope y")),
+        Token::Config("scope".into(), "y".into()),
         Token::Key(name("scoped")),
             Token::Locale(name("a")),
             Token::Value(String::from("value A")),
             Token::Locale(name("b")),
             Token::Value(String::from("value B")),
     ];
+    let a = locale("a");
+    let b = locale("b");
 
     let scope = parse(tokens).expect("should be ok");
 
-    let vals = &["value A", "value B"];
+    let vals = &[(&a, "value A"), (&b, "value B")];
 
     assert_scopes_eq(
         &nest(

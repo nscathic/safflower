@@ -1,4 +1,5 @@
-!locales en
+!locales en(English)
+
 text:
     en "Hello!"
 

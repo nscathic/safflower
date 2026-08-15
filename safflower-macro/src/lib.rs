@@ -19,7 +19,7 @@ use text::Texter;
 /// ## File
 /// The file must declare locales up top, with `!locales` followed by 
 /// whitespace-separated names, and then list entries as `KEY: LOC "VALUE"`. 
-/// Whitespace is completely ignored
+/// Whitespace is completely ignored.
 /// 
 /// ## Locales
 /// The locales come from the config, so e.g. `!locales en es fr` would give 

@@ -1,51 +1,29 @@
-use proc_macro2::{Span, TokenStream};
+use std::{ops::Not, rc::Rc};
+
+use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 
-use crate::{LOCALE_FAILURE_MESSAGE, name::Name, parser::{Key, Scope}};
+use crate::parser::{Locale, Scope};
 
 #[cfg(test)]
 mod tests;
 
-pub struct Generator {
-    locales: Vec<(syn::Ident, String)>,
-    scope: Scope,
-}
-
+pub struct Generator;
 impl Generator {
-    #[must_use] 
-    /// Sets itself up.
-    pub fn new(locales: Vec<Name>, scope: Scope) -> Self {
-        let locales = locales
-        .into_iter()
-        .map(|loc| (
-            syn::Ident::new(&loc.type_name(), Span::call_site()),
-            loc.into(), 
-        ))
-        .collect();
-
-        Self { 
-            locales, 
-            scope,
-        }
-    }
-
     #[must_use]
     /// Generates code.
     /// 
     /// # Errors
     /// If there are no defined locales.
-    pub fn generate(mut self) -> TokenStream {
-        let locales = self.generate_enum();
+    pub fn generate(
+        locales: &[Rc<Locale>], 
+        scope: &Scope,
+    ) -> TokenStream {
+        let locales = Self::generate_locales(locales);
         let getter = Self::generate_getter();
         let setter = Self::generate_setter();
         
-        // let keys = std::mem::take(&mut self.keys)
-        // .into_iter()
-        // .map(|key| self.generate_from_key(key))
-        // .collect::<Vec<_>>();
-
-        let scope = std::mem::take(&mut self.scope);
-        let keys = self.generate_entries(scope);
+        let keys = scope.generate_entries();
 
         quote! {
             #locales
@@ -56,49 +34,67 @@ impl Generator {
     }
     
     /// Generates an enum of locales, and a static var to keep it.
-    fn generate_enum(&self) -> TokenStream {
-        let locales = self.locales.iter().map(|(i, _)| i).collect::<Vec<_>>();
-        let default = locales[0];
-        let count = self.locales.len();
+    fn generate_locales(locales: &[Rc<Locale>]) -> TokenStream {
+        let idents = locales
+        .iter()
+        .map(|lc| lc.ident())
+        .collect::<Vec<_>>();
+
+        let names = locales
+        .iter()
+        .map(|lc| lc.name())
+        .collect::<Vec<_>>();
+
+        let default = unsafe { idents.get_unchecked(0) };
+        let count = locales.len();
 
         let enum_comment = comment("The locales available.");
-        let const_comment = comment("All locales, in the order they were \
-            declared.");
+        let const_comment = comment(
+            "All locales, in the order they were declared."
+        );
         let locale_comment = comment("The current locale.");
 
         quote! {
             #enum_comment
             #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
             pub enum Locale {
-                #(#locales,)*
+                #(#idents,)*
+            }
+            impl std::fmt::Display for Locale {
+                fn fmt(
+                    &self, 
+                    f: &mut std::fmt::Formatter<'_>
+                ) -> std::fmt::Result {
+                    match self {
+                        #(Self::#idents => write!(f, #names),)*
+                    }
+                }
             }
 
             #const_comment
             pub const LOCALES: [Locale; #count] = [
-                #(Locale::#locales,)*
+                #(Locale::#idents,)*
             ];
 
             #locale_comment
-            pub static LOCALE: std::sync::Mutex<Locale> = 
-                std::sync::Mutex::new(Locale::#default);
+            pub static LOCALE: std::sync::RwLock<Locale> = 
+                std::sync::RwLock::new(Locale::#default);
         }.into_token_stream()
     }
 
     /// Generates a function to get the current locale.
     fn generate_getter() -> TokenStream {
         let comment = comment("\
-            Returns the current locale. As this calls `Mutex::lock()`, it \
-            will block the thread until it is safe to access. \n\n\
-            # Panic \n\
-            It will panic if the `Mutex` has been poisoned. See \
-            [`std::sync::Mutex`].");
+            Returns the current locale.\n\n\
+            This blocks the thread until an exclusive write can be performed.\
+        ");
 
         quote! {
             #comment
             pub fn get_locale() -> Locale {
                 *LOCALE
-                .lock()
-                .expect(#LOCALE_FAILURE_MESSAGE)
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
             }
         }
     }
@@ -106,100 +102,25 @@ impl Generator {
     /// Generates a function to set the current locale.
     fn generate_setter() -> TokenStream {
         let comment = comment("\
-            Sets the current locale. As this calls `Mutex::lock()`, it will \
-            block the thread until it is safe to access. \n\n\
-            # Panic \n\
-            It will panic if the `Mutex` has been poisoned. See \
-            [`std::sync::Mutex`].");
+            Sets the current locale.\n\n\
+            This blocks the thread until there is no write-lock in place; 
+            multiple simultaneous reads are not blocking.\
+        ");
 
         quote! {
             #comment
             pub fn set_locale(locale: Locale) {
                 *LOCALE
-                .lock()
-                .expect(#LOCALE_FAILURE_MESSAGE)
-                    = locale;
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                = locale;
             }
         }.into_token_stream()
-    }
-
-    fn generate_from_key(&self, key: Key) -> TokenStream {
-        let Key { id, arguments, comment, entries } = key;
-
-        // All go to params, but only positinal go to arguments
-        let (positional, named): (Vec<_>, Vec<_>) = arguments
-        .into_iter()
-        .partition(|a| a.chars().all(char::is_numeric));
-
-        let named = named
-        .into_iter()
-        .map(|a| syn::Ident::new(&a, Span::call_site()));
-
-        let positional = positional
-        .into_iter()
-        .map(|i| format!("arg{i}"))
-        .map(|a| syn::Ident::new(&a, Span::call_site()));
-
-        let arguments = positional.clone().collect::<Vec<_>>();
-        let params = named.chain(positional);
-
-        let id = syn::Ident::new(id.to_str(), Span::call_site());
-        let comment = comment.map(|c| quote! {#[doc = #c]});
-
-        let entries = entries
-        .into_iter()
-        .enumerate()
-        .map(|(i, entry)| {
-            let locale = &self.locales[i].0;
-            quote! {
-                Locale::#locale => format!(#entry, #(#arguments,)*)
-            }
-        });
-
-        quote! {
-            #comment
-            pub fn #id(
-                locale: Locale,
-                #(#params:impl std::fmt::Display,)*
-            ) -> String {
-                match locale {
-                    #(#entries,)*
-                }
-            }
-        }
-    }
-
-    fn generate_entries(&self, scope: Scope) -> TokenStream {
-        let Scope { keys, nested } = scope;
-        let keys = keys
-        .into_iter()
-        .map(|key| self.generate_from_key(key))
-        .collect::<Vec<_>>();
-
-        let nested = nested
-        .into_iter()
-        .map(|(name, scope)| {
-            let inner = self.generate_entries(*scope);
-            let module = syn::Ident::new(&name.to_str(), Span::call_site());
-            quote! {
-                pub mod #module { 
-                    use super::Locale;
-                    #inner 
-                }
-            }
-        });
-
-        quote! {
-            #(#keys)*
-            #(#nested)*
-        }
     }
 }
 
 fn comment(text: &str) -> Option<TokenStream> {
-    if cfg!(test) {
-        None
-    } else {
-        Some(quote!{#[doc = #text]})
-    }
+    cfg!(test)
+    .not()
+    .then(|| quote!{#[doc = #text]})
 }

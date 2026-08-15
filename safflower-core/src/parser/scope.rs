@@ -1,18 +1,47 @@
-use crate::{error::Error, name::Name, parser::{Key, TempKey, config::Configuration}};
+use proc_macro2::{Span, TokenStream};
+use quote::quote;
+
+use crate::{error::Error, name::Name, parser::{Key, ParseError, config::Configuration, key::KeyBuilder}};
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 pub struct Scope {
     pub keys: Vec<Key>,
     pub nested: Vec<(Name, Box<Scope>)>,
 }
+impl Scope {
+    pub(crate) fn generate_entries(&self) -> TokenStream {
+        let keys = self.keys
+        .iter()
+        .map(Key::generate)
+        .collect::<Vec<_>>();
+
+        let nested = self.nested
+        .iter()
+        .map(|(name, scope)| {
+            let inner = scope.generate_entries();
+            let module = syn::Ident::new(name.as_str(), Span::call_site());
+            quote! {
+                pub mod #module { 
+                    use super::Locale;
+                    #inner 
+                }
+            }
+        });
+
+        quote! {
+            #(#keys)*
+            #(#nested)*
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Default)]
-pub struct TempScope {
-    pub keys: Vec<TempKey>,
-    pub nested: Vec<(Name, Box<TempScope>)>,
+pub struct ScopeBuilder {
+    pub keys: Vec<KeyBuilder>,
+    pub nested: Vec<(Name, Box<ScopeBuilder>)>,
 }
-impl TempScope {
-    pub fn validate(
+impl ScopeBuilder {
+    pub fn build(
         self, 
         config: &Configuration,
     ) -> Result<Scope, Error> {
@@ -20,13 +49,14 @@ impl TempScope {
         
         let keys = keys
         .into_iter()
-        .map(|k| k.validate(&config.locales).map_err(|e| config.parse_err(e)))
-        .collect::<Result<_,_>>()?;
+        .map(|k| k.build(config.locales()))
+        .collect::<Result<_,_>>()
+        .map_err(|e| config.parse_err(e))?;
 
         let nested = nested
         .into_iter()
         .map(|(name, ts)| ts
-            .validate(config)
+            .build(config)
             .map(|s| (name, Box::new(s)))
         )
         .collect::<Result<_,_>>()?;
@@ -36,57 +66,32 @@ impl TempScope {
             nested,
         })
     }
-}
-impl Scope {
-    pub fn create(
-        config: &Configuration,
-        keys: Vec<TempKey>,
-    ) -> Result<Self, Error> {
-        let mut root = Self {
-            keys: Vec::new(),
-            nested: Vec::new(),
+    
+    pub(crate) fn add_key(&mut self, key: KeyBuilder) -> Result<(), ParseError> {
+        // Check if an old key matches the new one
+        let Some(old) = self.keys
+        .iter_mut()
+        .find(|k| k.id() == key.id()) else {
+            self.keys.push(key);
+            return Ok(());
         };
+        
+        old.consume(key)
+    }
+    
+    pub(crate) fn traverse (&mut self, name: Name) -> &mut Self {
+        let index = self.nested
+        .iter_mut()
+        .position(|(n, _)| n == &name)
+        .unwrap_or_else(|| {
+            let i = self.nested.len();
+            self.nested.push((name, Box::default()));
+            i
+        });
 
-        let (root_keys, mut rest): (Vec<_>, _) = keys
-        .into_iter()
-        .partition(|k| k.scope.is_empty());
-
-        root.keys = root_keys
-        .into_iter()
-        .map(|k| k
-            .validate(&config.locales)
-            .map_err(|e| config.parse_err(e))
-        )
-        .collect::<Result<_,_>>()?;
-
-        loop {
-            if rest.is_empty() { return Ok(root); }
-
-            // We have some scopes
-            let mut new = rest.remove(0);
-            let scope = new.scope.remove(0);
-
-            // Get all that match!
-            dbg!(rest.iter().map(|s| &s.scope).collect::<Vec<_>>());
-
-            let new_keys = rest.extract_if(
-                .., 
-                |k| k.scope
-                    .first()
-                    .expect("the scope wasn't empty, but is now...") 
-                    == &scope
-            )
-            .map(|mut k| {
-                k.scope.remove(0);
-                k
-            })
-            .collect::<Vec<_>>();
-
-            let nested = Scope::create(config, new_keys)?;
-            dbg!(&scope);
-            dbg!(&nested);
-
-            root.nested.push((scope, Box::new(nested)));
+        unsafe{ 
+            &mut self.nested.get_unchecked_mut(index).1
         }
+
     }
 }

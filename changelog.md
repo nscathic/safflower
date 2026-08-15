@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Added
+- Locales can now be named by using parenthesises: `!locales en(English)`. These are used for `LOCALE`'s implementation of `std::fmt::Display`.
+
+### Changed
+- Less data copying.
+- `LOCALE` getter will not block concurrent reads, only writes.
+- Entries without arguments now generate `const fn`s that return static string slices instead. 
 
 ## [1.0.0] 2026-01-11
 ### Added

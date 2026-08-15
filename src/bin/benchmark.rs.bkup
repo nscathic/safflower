@@ -1,7 +1,10 @@
 use std::time::{Duration, Instant};
 
 use safflower::{load, text};
-use safflower_core::{generator::Generator, parser::{ParsedData, Parser}};
+use safflower_core::{
+    generator::Generator, 
+    parser::{ParsedData, Parser},
+};
 // use safflower_core as core;
 
 fn main() {
@@ -22,11 +25,11 @@ fn time_loads() {
     let t0 = Instant::now();
     for _ in 0..n {
         let tp = Instant::now();
-        let parser = Parser::new(path).unwrap();
+        let Ok(parser) = Parser::new(path) else { return; };
         ts[0] += tp.elapsed();
 
         let tp = Instant::now();
-        let ParsedData { locales, scope } = parser.parse().unwrap();
+        let Ok(ParsedData { locales, scope }) = parser.parse() else { return; };
         ts[1] += tp.elapsed();
 
         let tp = Instant::now();
@@ -58,7 +61,7 @@ fn time_loads() {
         times[1],
         times[2],
         times[3],
-    )
+    );
 }
 
 #[allow(clippy::useless_format)]
@@ -108,6 +111,7 @@ fn nice_time(duration: Duration) -> String {
     format!("{:.1} s", duration.as_secs_f32())
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn digits(number: u128) -> String {
     if number < 10_000 {
         return format!("{:.3}", number as f64 / 1e3)
@@ -117,7 +121,7 @@ fn digits(number: u128) -> String {
     }
     format!("{:.1}", number as f64 / 1e3)
 }
-
+#[allow(clippy::cast_precision_loss)]
 fn nice_time_avg(duration: Duration, n: usize) -> String {
     let duration = duration.as_secs_f64() / n as f64;
     if duration < 1e-6 {
@@ -130,5 +134,5 @@ fn nice_time_avg(duration: Duration, n: usize) -> String {
         return format!("{:.1} ms", duration * 1e3)
     }
     
-    format!("{:.1} s", duration)
+    format!("{duration:.1} s")
 }

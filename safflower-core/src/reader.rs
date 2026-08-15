@@ -1,4 +1,4 @@
-use crate::name::Name;
+use crate::name::{Name, NameBuilder, ValidChar};
 
 mod error;
 pub use error::ReadError;
@@ -25,23 +25,27 @@ impl CharReader {
 
         while let Some(c) = self.chars.pop() {
             if c == '\n' { break; }
-            comment += &c.to_string();
+            comment.push(c);
         }
 
         Token::Comment(comment)
     }
     
     fn read_config(&mut self) -> Token {
-        let mut line = String::new();
-        let mut add = true;
+        let mut key = String::new();
+        let mut args = String::new();
+        let mut is_comment = false;
+
+        let mut writer = &mut key;
 
         while let Some(c) = self.chars.pop() {
             if c == '\n' { break; }
-            if c == '#' { add = false; }
+            if c.is_whitespace() { writer = &mut args; }
+            if c == '#' { is_comment = true; }
  
-            if add { line += &c.to_string(); }
+            if !is_comment { writer.push(c); }
         }
-        Token::Config(line)
+        Token::Config(key, args)
     }
     
     fn read_value(&mut self) -> Result<Token, ReadError> {
@@ -59,7 +63,7 @@ impl CharReader {
                 },
 
                 // Any random char is added to the buffer, unchecked.
-                Some(c) => value += &c.to_string(),
+                Some(c) => value.push(c),
 
                 // If the iterator finished without closing the quote, you have
                 // some problems in your file.
@@ -69,7 +73,7 @@ impl CharReader {
     }
     
     fn read_param(&mut self, first: char) -> Result<Token, ReadError> {
-        let mut name = Name::new(first)?;
+        let mut name = NameBuilder::new(first)?;
 
         // First we get the token
         while let Some(char) = self.chars.pop() {
@@ -77,15 +81,15 @@ impl CharReader {
                 c if c.is_whitespace() => break,
 
                 // The next thing is a delimiter, so we have a key
-                ':' => return Ok(Token::Key(name)),
+                ':' => return Ok(Token::Key(name.build())),
 
                 // The next thing is a quote, so we have a locale
                 '\"' => {
                     self.buffer = Some('\"');
-                    return Ok(Token::Locale(name));
+                    return Ok(Token::Locale(name.build()));
                 },
 
-                // Any valid char is added to the buffer, unchecked.
+                // Any valid char is added to the buffer
                 c => name.add(c)?,
             }
         }
@@ -97,12 +101,12 @@ impl CharReader {
                 Some(c) if c.is_whitespace() => {},
 
                 // The next thing is a delimiter, so we have a key
-                Some(':') => return Ok(Token::Key(name)),
+                Some(':') => return Ok(Token::Key(name.build())),
 
                 // The next thing is a quote, so we have a locale
                 Some('\"') => {
                     self.buffer = Some('\"');
-                    return Ok(Token::Locale(name));
+                    return Ok(Token::Locale(name.build()));
                 },
 
                 // Other chars are suspicious
@@ -119,18 +123,18 @@ impl Iterator for CharReader {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let c = match self.buffer.take() {
-                Some(c) => Some(c),
-                None => self.chars.pop(),
+                Some(c) => c,
+                None => self.chars.pop()?,
             };
 
-            return match c? {
+            return match c {
                 '#' => Some(Ok(self.read_comment())),
                 '!' => Some(Ok(self.read_config())),
                 '"' => Some(self.read_value()),
 
                 c if c.is_whitespace() => continue,
 
-                c if Name::is_valid(c) => Some(self.read_param(c)),
+                c if ValidChar::is_valid(c) => Some(self.read_param(c)),
 
                 c => Some(Err(ReadError::InvalidChar(c))),
             }
@@ -140,7 +144,7 @@ impl Iterator for CharReader {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
-    Config(String),
+    Config(String, String),
     Comment(String),
     
     Key(Name),
@@ -152,7 +156,7 @@ pub enum Token {
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Config(c) => write!(f, "Config({c})"),
+            Self::Config(k, a) => write!(f, "Config({k}: {a})"),
             Self::Comment(c) => write!(f, "Comment({c})"),
             Self::Key(name) => write!(f, "Key({name})"),
             Self::Locale(name) => write!(f, "Locale({name})"),

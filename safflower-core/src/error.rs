@@ -3,6 +3,7 @@ use thiserror::Error;
 
 use crate::{parser::ParseError, reader::ReadError};
 
+#[must_use]
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("IO error for file \"{0}\": {1}")]

@@ -1,5 +1,3 @@
-use safflower_core::LOCALE_FAILURE_MESSAGE;
-
 pub struct Texter {
     key: syn::Path,
     args: Vec<syn::Expr>
@@ -30,9 +28,7 @@ impl quote::ToTokens for Texter {
 
         let new = quote::quote! {
             localisation::#key(
-                *localisation::LOCALE
-                    .lock()
-                    .expect(#LOCALE_FAILURE_MESSAGE)
+                localisation::get_locale()
                 #(,#args)*
             )
         };

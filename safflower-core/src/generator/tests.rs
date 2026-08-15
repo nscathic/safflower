@@ -1,13 +1,26 @@
-use crate::{LOCALE_FAILURE_MESSAGE, parser::Parser};
+#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
+use std::rc::Rc;
+
+use crate::{name::Name, parser::{Key, Locale, Parser}};
 
 use super::*;
 
-fn names<const S: usize>(strs: [&str; S]) -> Vec<Name> {
+fn locales<const S: usize>(strs: [[&str; 2]; S]) -> Vec<Rc<Locale>> {
     strs
     .into_iter()
-    .map(Name::try_from)
-    .collect::<Result<_,_>>()
-    .unwrap()
+    .map(|[k, n]| Rc::new(Locale::new(
+        Name::try_from(k).unwrap(), 
+        Some(n.into()),
+    )))
+    .collect::<_>()
+}
+
+fn locale(name: &str) -> Rc<Locale> {
+    Rc::new(Locale::new(
+        Name::try_from(name).unwrap(), 
+        None,
+    ))
 }
 
 fn assert_tokens_eq(expected: &TokenStream, actual: &TokenStream) {
@@ -34,16 +47,22 @@ fn enscope(keys: &[Key]) -> Scope {
 
 #[test]
 fn enum_single_locale() {
-    let locales = names(["en"]);
+    let locales = locales([["en", "English"]]);
+    let actual = Generator::generate_locales(&locales);
 
-    let generator = Generator::new(locales, Scope::default());
-    let actual = generator.generate_enum();
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale { En, }
+        impl std::fmt::Display for Locale {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::En => write!(f, "English"),
+                }
+            }
+        }
         pub const LOCALES: [Locale; 1usize] = [ Locale::En, ];
-        pub static LOCALE: std::sync::Mutex<Locale> = 
-                std::sync::Mutex::new(Locale::En);
+        pub static LOCALE: std::sync::RwLock<Locale> = 
+                std::sync::RwLock::new(Locale::En);
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -51,10 +70,13 @@ fn enum_single_locale() {
 
 #[test]
 fn enum_mutli_locales() {
-    let head = names(["en", "it", "fr"]);
+    let locales = locales([
+        ["en", "English"], 
+        ["it", "Italian"], 
+        ["fr", "French"],
+    ]);
 
-    let generator = Generator::new(head, Scope::default());
-    let actual = generator.generate_enum();
+    let actual = Generator::generate_locales(&locales);
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
@@ -62,13 +84,22 @@ fn enum_mutli_locales() {
             It,
             Fr,
         }
+        impl std::fmt::Display for Locale {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::En => write!(f, "English"),
+                    Self::It => write!(f, "Italian"),
+                    Self::Fr => write!(f, "French"),
+                }
+            }
+        }
         pub const LOCALES: [Locale; 3usize] = [
             Locale::En,
             Locale::It,
             Locale::Fr,
         ];
-        pub static LOCALE: std::sync::Mutex<Locale> = 
-                std::sync::Mutex::new(Locale::En);
+        pub static LOCALE: std::sync::RwLock<Locale> = 
+                std::sync::RwLock::new(Locale::En);
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -76,10 +107,13 @@ fn enum_mutli_locales() {
 
 #[test]
 fn enum_variant_locales() {
-    let locales = names(["en-US", "en_uk", "en-in"]);
+    let locales = locales([
+        ["en-US", "American English"], 
+        ["en_uk", "British English"], 
+        ["en-in", "Indian English"]
+    ]);
     
-    let generator = Generator::new(locales, Scope::default());
-    let actual = generator.generate_enum();
+    let actual = Generator::generate_locales(&locales);
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale {
@@ -87,13 +121,22 @@ fn enum_variant_locales() {
             EnUk,
             EnIn,
         }
+        impl std::fmt::Display for Locale {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::EnUs => write!(f, "American English"),
+                    Self::EnUk => write!(f, "British English"),
+                    Self::EnIn => write!(f, "Indian English"),
+                }
+            }
+        }
         pub const LOCALES: [Locale; 3usize] = [
             Locale::EnUs,
             Locale::EnUk,
             Locale::EnIn,
         ];
-        pub static LOCALE: std::sync::Mutex<Locale> = 
-                std::sync::Mutex::new(Locale::EnUs);
+        pub static LOCALE: std::sync::RwLock<Locale> = 
+                std::sync::RwLock::new(Locale::EnUs);
     }.into_token_stream();
 
     assert_tokens_eq(&expected, &actual);
@@ -101,16 +144,18 @@ fn enum_variant_locales() {
 
 #[test]
 fn single_key_single_locale() {
-    let locales = names(["en"]);
-    let key = Key::name("greet").comment("Common greeting.").entries(&["hi"]);
-    let generator = Generator::new(locales, enscope(&[key.clone()]));
-    let actual = generator.generate_from_key(key);
+    let en = locale("en");
+    
+    let actual = Key::name("greet")
+        .comment("Common greeting.")
+        .entries(&[(&en, "hi")])
+        .generate();
 
     let expected = quote! {
         #[doc = "Common greeting."]
-        pub fn greet(locale: Locale,) -> String {
+        pub const fn greet(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("hi",),
+                Locale::En => "hi",
             }
         }
     };
@@ -120,13 +165,13 @@ fn single_key_single_locale() {
 
 #[test]
 fn single_key_single_locale_single_arg() {
-    let locales = names(["en"]);
-    let key = Key::name("greet") 
+    let en = locale("en");
+   
+    let actual = Key::name("greet") 
         .arguments(&["name"])
         .comment("Common greeting.")
-        .entries(&["hi {name}"]);
-    let generator = Generator::new(locales, enscope(&[key.clone()]));
-    let actual = generator.generate_from_key(key);
+        .entries(&[(&en, "hi {name}")])
+        .generate();
 
     let expected = quote! {
         #[doc = "Common greeting."]
@@ -145,13 +190,13 @@ fn single_key_single_locale_single_arg() {
 
 #[test]
 fn single_key_single_locale_multi_arg() {
-    let locales = names(["en"]);
-    let key = Key::name("greet") 
+    let en = locale("en");
+
+    let actual = Key::name("greet") 
         .arguments(&["0", "1", "2"])
         .comment("Common greeting.")
-        .entries(&["hi {0}, {1}, and {2}"]);
-    let generator = Generator::new(locales, enscope(&[key.clone()]));
-    let actual = generator.generate_from_key(key);
+        .entries(&[(&en, "hi {0}, {1}, and {2}")])
+        .generate();
 
     let expected = quote! {
         #[doc = "Common greeting."]
@@ -172,22 +217,24 @@ fn single_key_single_locale_multi_arg() {
 
 #[test]
 fn single_key_mutli_locale() {
-    let locales = names(["en", "se", "it"]);
-    let key = Key::name("surprise")
+    let en = locale("en");
+    let se = locale("se");
+    let it = locale("it");
+
+    let actual = Key::name("surprise")
         .entries(&[
-            "oh my god",
-            "jösses",
-            "oddio",
-        ]);
-    let generator = Generator::new(locales, enscope(&[key.clone()]));
-    let actual = generator.generate_from_key(key);
+            (&en, "oh my god"),
+            (&se, "jösses"),
+            (&it, "oddio"),
+        ])
+        .generate();
 
     let expected = quote! {
-        pub fn surprise(locale: Locale,) -> String {
+        pub const fn surprise(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("oh my god",),
-                Locale::Se => format!("jösses",),
-                Locale::It => format!("oddio",),
+                Locale::En => "oh my god",
+                Locale::Se => "jösses",
+                Locale::It => "oddio",
             }
         }
     };
@@ -197,35 +244,45 @@ fn single_key_mutli_locale() {
 
 #[test]
 fn single_key_single_locale_generate_all() {
-    let head = names(["en"]);
+    let locales = locales([["en", "English"]]);
+    let en = &locales[0];
+
     let key = Key::name("greet")
-        .entries(&["hi"]);
-    let generator = Generator::new(head, enscope(&[key]));
-    let actual = generator.generate();
+        .entries(&[(en, "hi")]);
+    let scope = enscope(std::slice::from_ref(&key));
+
+    let actual = Generator::generate(&locales, &scope);
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale { En, }
+        impl std::fmt::Display for Locale {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::En => write!(f, "English"),
+                }
+            }
+        }
         pub const LOCALES: [Locale; 1usize] = [Locale::En,];
-        pub static LOCALE: std::sync::Mutex<Locale> = 
-                std::sync::Mutex::new(Locale::En);
+        pub static LOCALE: std::sync::RwLock<Locale> = 
+                std::sync::RwLock::new(Locale::En);
 
         pub fn get_locale() -> Locale {
             *LOCALE
-            .lock()
-            .expect(#LOCALE_FAILURE_MESSAGE)
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
         }
 
         pub fn set_locale(locale: Locale) {
             *LOCALE
-            .lock()
-            .expect(#LOCALE_FAILURE_MESSAGE)
-                = locale;
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            = locale;
         }
 
-        pub fn greet(locale: Locale,) -> String {
+        pub const fn greet(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("hi",),
+                Locale::En => "hi",
             }
         }
     };
@@ -235,45 +292,54 @@ fn single_key_single_locale_generate_all() {
 
 #[test]
 fn multi_key_single_locale_generate_all() {
-    let head = names(["en"]);
+    let locales = locales([["en", "English"]]);
+    let en = &locales[0];
+
     let scope = enscope(&[
         Key::name("greet") 
-            .entries(&["hi"]),
+            .entries(&[(en, "hi")]),
         Key::name("other_greet") 
-            .entries(&["hello"]),
+            .entries(&[(en, "hello")]),
     ]);
-    let generator = Generator::new(head, scope);
-    let actual = generator.generate();
+
+    let actual = Generator::generate(&locales, &scope);
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
         pub enum Locale { En, }
+        impl std::fmt::Display for Locale {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::En => write!(f, "English"),
+                }
+            }
+        }
         pub const LOCALES: [Locale; 1usize] = [Locale::En,];
-        pub static LOCALE: std::sync::Mutex<Locale> = 
-                std::sync::Mutex::new(Locale::En);
+        pub static LOCALE: std::sync::RwLock<Locale> = 
+                std::sync::RwLock::new(Locale::En);
 
         pub fn get_locale() -> Locale {
             *LOCALE
-            .lock()
-            .expect(#LOCALE_FAILURE_MESSAGE)
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
         }
 
         pub fn set_locale(locale: Locale) {
             *LOCALE
-            .lock()
-            .expect(#LOCALE_FAILURE_MESSAGE)
-                = locale;
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            = locale;
         }
 
-        pub fn greet(locale: Locale,) -> String {
+        pub const fn greet(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("hi",),
+                Locale::En => "hi",
             }
         }
 
-        pub fn other_greet(locale: Locale,) -> String {
+        pub const fn other_greet(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("hello",),
+                Locale::En => "hello",
             }
         }
     };
@@ -283,15 +349,20 @@ fn multi_key_single_locale_generate_all() {
 
 #[test]
 fn multi_key_multi_locale_generate_all() {
-    let head = names(["en", "gr"]);
+    let locales = locales([
+        ["en", "English"],
+        ["gr", "Greek"],
+    ]);
+    let en = &locales[0];
+    let gr = &locales[1];
+
     let scope = enscope(&[
         Key::name("greet")
-            .entries(&["hi", "γεια"]),
+            .entries(&[(en,"hi"), (gr, "γεια")]),
         Key::name("other_greet")
-            .entries(&["hello", "καλημέρα"]),
+            .entries(&[(en,"hello"), (gr, "καλημέρα")]),
     ]);
-    let generator = Generator::new(head, scope);
-    let actual = generator.generate();
+    let actual = Generator::generate(&locales, &scope);
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -299,34 +370,42 @@ fn multi_key_multi_locale_generate_all() {
             En,
             Gr,
         }
+        impl std::fmt::Display for Locale {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::En => write!(f, "English"),
+                    Self::Gr => write!(f, "Greek"),
+                }
+            }
+        }
         pub const LOCALES: [Locale; 2usize] = [Locale::En, Locale::Gr,];
-        pub static LOCALE: std::sync::Mutex<Locale> = 
-                std::sync::Mutex::new(Locale::En);
+        pub static LOCALE: std::sync::RwLock<Locale> = 
+                std::sync::RwLock::new(Locale::En);
         
         pub fn get_locale() -> Locale {
             *LOCALE
-            .lock()
-            .expect(#LOCALE_FAILURE_MESSAGE)
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
         }
 
         pub fn set_locale(locale: Locale) {
             *LOCALE
-            .lock()
-            .expect(#LOCALE_FAILURE_MESSAGE)
-                = locale;
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            = locale;
         }
 
-        pub fn greet(locale: Locale,) -> String {
+        pub const fn greet(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("hi",),
-                Locale::Gr => format!("γεια",),
+                Locale::En => "hi",
+                Locale::Gr => "γεια",
             }
         }
 
-        pub fn other_greet(locale: Locale,) -> String {
+        pub const fn other_greet(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("hello",),
-                Locale::Gr => format!("καλημέρα",),
+                Locale::En => "hello",
+                Locale::Gr => "καλημέρα",
             }
         }
     };
@@ -347,8 +426,10 @@ fn multi_from_text() {
     ";
     let parsed = Parser::from_text(source).parse().unwrap();
 
-    let generator = Generator::new(parsed.locales, parsed.scope);
-    let actual = generator.generate();
+    let actual = Generator::generate(
+        &parsed.locales, 
+        &parsed.scope,
+    );
 
     let expected = quote! {
         #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -356,34 +437,42 @@ fn multi_from_text() {
             En,
             Gr,
         }
+        impl std::fmt::Display for Locale {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::En => write!(f, "en"),
+                    Self::Gr => write!(f, "gr"),
+                }
+            }
+        }
         pub const LOCALES: [Locale; 2usize] = [Locale::En, Locale::Gr,];
-        pub static LOCALE: std::sync::Mutex<Locale> = 
-                std::sync::Mutex::new(Locale::En);
+        pub static LOCALE: std::sync::RwLock<Locale> = 
+                std::sync::RwLock::new(Locale::En);
 
         pub fn get_locale() -> Locale {
             *LOCALE
-            .lock()
-            .expect(#LOCALE_FAILURE_MESSAGE)
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
         }
 
         pub fn set_locale(locale: Locale) {
             *LOCALE
-            .lock()
-            .expect(#LOCALE_FAILURE_MESSAGE)
-                = locale;
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            = locale;
         }
 
-        pub fn greet(locale: Locale,) -> String {
+        pub const fn greet(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("hi",),
-                Locale::Gr => format!("γεια",),
+                Locale::En => "hi",
+                Locale::Gr => "γεια",
             }
         }
 
-        pub fn other_greet(locale: Locale,) -> String {
+        pub const fn other_greet(locale: Locale) -> &'static str {
             match locale {
-                Locale::En => format!("hello",),
-                Locale::Gr => format!("καλημέρα",),
+                Locale::En => "hello",
+                Locale::Gr => "καλημέρα",
             }
         }
     };
