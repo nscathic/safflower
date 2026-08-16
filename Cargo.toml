@@ -13,10 +13,8 @@ categories = ["internationalization", "localization"]
 exclude = ["src/bin", "test-data"]
 
 [dependencies]
-# safflower-core  = "1.0.0"
-safflower-core  = {path = "./safflower-core"}
-# safflower-macro = "1.0.0"
-safflower-macro = {path = "./safflower-macro"}
+safflower-core  = "1.1.0"
+safflower-macro = "1.1.0"
 unicode-segmentation = "1.13.3"
 
 [workspace]
